@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OCR de Nota Fiscal – Teste</title>
+  <title>OCR com Tesseract + Pré-processamento</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -49,12 +49,13 @@
     .ocr-progress-bar { height: 100%; width: 0%; background: #6c5ce7; transition: width 0.3s; }
     img.preview { max-width: 100%; max-height: 200px; border-radius: 8px; margin-top: 8px; border: 1px solid #ddd; }
     .debug-box { background: #f1f2f6; padding: 8px; font-size: 12px; border-radius: 4px; margin-top: 8px; max-height: 150px; overflow-y: auto; white-space: pre-wrap; }
+    .processed-img { max-width: 100%; max-height: 150px; border: 1px solid #aaa; margin-top: 8px; }
   </style>
 </head>
 <body>
 <div class="container">
-  <h2>📸 OCR de Nota Fiscal / Cupom</h2>
-  <p>Selecione uma imagem <strong>nítida</strong> com texto legível.</p>
+  <h2>📸 OCR com Tesseract + Pré-processamento (sem API)</h2>
+  <p>Selecione uma imagem de nota fiscal. O sistema vai melhorar a imagem antes de ler.</p>
   <div class="file-input-wrapper">
     <input type="file" id="imageInput" accept="image/*" />
     <button id="ocrBtn" disabled>🔍 Processar</button>
@@ -62,6 +63,7 @@
   <div class="ocr-progress"><div class="ocr-progress-bar" id="ocrProgressBar"></div></div>
   <div id="ocrResult" class="result-box" style="display:none;"></div>
   <div id="imagePreview"></div>
+  <div id="processedPreview"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -72,6 +74,7 @@
     const progressBar = document.getElementById('ocrProgressBar');
     const resultDiv = document.getElementById('ocrResult');
     const previewDiv = document.getElementById('imagePreview');
+    const processedDiv = document.getElementById('processedPreview');
 
     if (typeof Tesseract === 'undefined') {
       resultDiv.style.display = 'block';
@@ -87,50 +90,135 @@
         const reader = new FileReader();
         reader.onload = (e) => {
           previewDiv.innerHTML = `<img src="${e.target.result}" class="preview" />`;
+          processedDiv.innerHTML = ''; // limpa anterior
         };
         reader.readAsDataURL(file);
       } else {
         ocrBtn.disabled = true;
         previewDiv.innerHTML = '';
+        processedDiv.innerHTML = '';
       }
     });
 
+    // ===== PRÉ-PROCESSAMENTO DA IMAGEM =====
+    function preprocessImage(imageDataURL) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          const width = img.width;
+          const height = img.height;
+          canvas.width = width;
+          canvas.height = height;
+
+          // Desenha a imagem original
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Pega os pixels
+          const imageData = ctx.getImageData(0, 0, width, height);
+          const data = imageData.data;
+
+          // 1. Converte para escala de cinza + ajusta contraste (filtro simples)
+          for (let i = 0; i < data.length; i += 4) {
+            const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+            // Aumenta contraste: valores mais claros ficam brancos, escuros pretos
+            let val = gray;
+            // Aplica contraste (fator 1.5)
+            val = (val - 128) * 1.5 + 128;
+            val = Math.min(255, Math.max(0, val));
+            // Binarização: threshold adaptativo (simples)
+            const threshold = 150; // pode ajustar
+            const binary = val > threshold ? 255 : 0;
+            data[i] = binary;
+            data[i+1] = binary;
+            data[i+2] = binary;
+          }
+
+          ctx.putImageData(imageData, 0, 0);
+
+          // Mostra a imagem processada
+          const processedDataURL = canvas.toDataURL('image/png');
+          processedDiv.innerHTML = `<img src="${processedDataURL}" class="processed-img" />`;
+
+          resolve(processedDataURL);
+        };
+        img.src = imageDataURL;
+      });
+    }
+
+    // ===== OCR COM TENTATIVAS =====
     ocrBtn.addEventListener('click', async function() {
       const file = fileInput.files[0];
       if (!file) return;
 
       this.disabled = true;
       resultDiv.style.display = 'block';
-      resultDiv.innerHTML = '⏳ Inicializando OCR...';
+      resultDiv.innerHTML = '⏳ Pré-processando imagem...';
       progressBar.style.width = '0%';
 
       try {
-        const imageData = await fileToBase64(file);
+        // 1. Lê a imagem original
+        const originalDataURL = await fileToBase64(file);
 
-        const result = await Tesseract.recognize(imageData, 'por', {
-          logger: (m) => {
-            if (m.status === 'recognizing text') {
-              const progress = Math.round(m.progress * 100);
-              progressBar.style.width = progress + '%';
+        // 2. Pré-processa (binarização, contraste)
+        const processedDataURL = await preprocessImage(originalDataURL);
+
+        // 3. Tenta OCR com a imagem processada
+        resultDiv.innerHTML = '⏳ Executando OCR (Tesseract)...';
+
+        // Tentativas com diferentes parâmetros
+        const attempts = [
+          { lang: 'por', psm: 6 },  // bloco de texto único
+          { lang: 'por', psm: 3 },  // auto
+          { lang: 'eng', psm: 6 },
+          { lang: 'por+eng', psm: 6 }
+        ];
+
+        let bestText = '';
+        let bestConfidence = 0;
+
+        for (let i = 0; i < attempts.length; i++) {
+          const attempt = attempts[i];
+          progressBar.style.width = ((i / attempts.length) * 100) + '%';
+
+          const result = await Tesseract.recognize(processedDataURL, attempt.lang, {
+            logger: (m) => {
+              if (m.status === 'recognizing text') {
+                const progress = Math.round((i / attempts.length + m.progress / attempts.length) * 100);
+                progressBar.style.width = Math.min(100, progress) + '%';
+              }
             }
+          });
+
+          const text = result.data.text.trim();
+          const confidence = result.data.confidence || 0;
+
+          if (text.length > bestText.length && confidence > 30) {
+            bestText = text;
+            bestConfidence = confidence;
           }
-        });
+
+          // Se já achou um texto bom, para
+          if (bestText.length > 20 && confidence > 60) break;
+        }
 
         progressBar.style.width = '100%';
-        const rawText = result.data.text;
 
-        // ========== PARSER MELHORADO ==========
-        // Limpeza pesada
+        if (!bestText) {
+          throw new Error('Nenhum texto reconhecido. Tente uma imagem mais nítida.');
+        }
+
+        // ===== PARSER =====
+        const rawText = bestText;
         const cleanText = rawText.replace(/[^\w\s,.$R]/g, ' ').replace(/\s+/g, ' ').trim();
 
-        // Linhas
         const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length >= 3);
         const firstLine = lines.length > 0 ? lines[0] : 'Não identificado';
 
-        // Extrair valor
         let valor = null;
 
-        // Padrões com "Total"
+        // Padrões fortes
         const patterns = [
           /(?:total|valor|total geral|total a pagar|valor total)\s*:?\s*R?\$?\s*([\d,.]+)/i,
           /R?\$?\s*([\d,.]+)\s*(?:total|valor)/i,
@@ -168,23 +256,23 @@
           }
         }
 
-        // Monta resultado
         let html = `<span class="label">📄 Texto extraído (${lines.length} linhas):</span><br>
           <div style="max-height:150px;overflow-y:auto;background:#f1f2f6;padding:8px;border-radius:6px;font-size:12px;">${escapeHTML(rawText)}</div><br>`;
         html += `<span class="label">🏢 Estabelecimento:</span> ${escapeHTML(firstLine)}<br>`;
         html += `<span class="label">💰 Valor total:</span> <strong>${valor !== null ? 'R$ ' + valor.toFixed(2) : '❌ Não identificado'}</strong>`;
         html += `<br><span class="label">🔍 Texto limpo:</span><div class="debug-box">${escapeHTML(cleanText)}</div>`;
+        html += `<br><span class="label">📊 Confiança:</span> ${Math.round(bestConfidence)}%`;
 
         resultDiv.innerHTML = html;
       } catch (error) {
-        console.error('Erro no OCR:', error);
-        let errorMsg = error instanceof Error ? error.message : String(error);
-        resultDiv.innerHTML = `❌ Erro no OCR: ${errorMsg}<br><small>Verifique o console (F12).</small>`;
+        console.error('Erro:', error);
+        resultDiv.innerHTML = `❌ Erro: ${error.message || 'Falha no processamento.'}<br><small>Verifique o console (F12).</small>`;
       } finally {
         this.disabled = false;
       }
     });
 
+    // ===== UTILITÁRIOS =====
     function fileToBase64(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
