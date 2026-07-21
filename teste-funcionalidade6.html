@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OCR – Extração Direta</title>
+  <title>OCR – Extração Direta (Corrigido)</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -56,7 +56,7 @@
 </head>
 <body>
 <div class="container">
-  <h2>📸 Extração Direta – Nota Fiscal</h2>
+  <h2>📸 Extração Direta – Nota Fiscal (Corrigido)</h2>
   <p>Selecione a imagem da nota.</p>
   <div class="file-input-wrapper">
     <input type="file" id="imageInput" accept="image/*" />
@@ -95,29 +95,28 @@
       }
     });
 
-    // ===== PARSER ESPECÍFICO =====
+    // ===== PARSER CORRIGIDO =====
     function extractFields(text) {
       const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       
-      // 1. Estabelecimento: primeira linha com mais de 10 caracteres, que não seja código
+      // 1. Estabelecimento: primeira linha com mais de 10 caracteres e que não seja código
       let estabelecimento = '';
       for (let i = 0; i < Math.min(lines.length, 6); i++) {
         const line = lines[i];
-        // Se tiver mais de 10 caracteres e não for só números ou códigos
         if (line.length > 10 && !/^\d+$/.test(line) && !/^[A-Z0-9]+$/.test(line)) {
           estabelecimento = line;
           break;
         }
       }
 
-      // 2. Forma de pagamento: procura por "FORMA DE PAGAMENTO" e pega a linha seguinte
+      // 2. Forma de pagamento: procura "FORMA DE PAGAMENTO" e pega a linha seguinte
       let formaPagamento = '';
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].toUpperCase();
         if (line.includes('FORMA DE PAGAMENTO') || line.includes('FORMA PAGTO')) {
           if (i + 1 < lines.length) {
             formaPagamento = lines[i + 1];
-            // Se a linha seguinte for vazia ou muito curta, pega a próxima
+            // Se a linha seguinte for muito curta, pega a próxima
             if (formaPagamento.length < 3 && i + 2 < lines.length) {
               formaPagamento = lines[i + 2];
             }
@@ -125,7 +124,7 @@
           break;
         }
       }
-      // Se não achou, tenta procurar por "DÉBITO", "CRÉDITO", etc.
+      // Fallback: palavras-chave
       if (!formaPagamento) {
         const upperText = text.toUpperCase();
         if (upperText.includes('DÉBITO')) formaPagamento = 'Débito';
@@ -133,18 +132,17 @@
         else if (upperText.includes('DINHEIRO')) formaPagamento = 'Dinheiro';
         else if (upperText.includes('PIX')) formaPagamento = 'Pix';
         else if (upperText.includes('VOUCHER')) formaPagamento = 'Voucher';
-        else {
-          // Tenta achar "CARTAO" + "DEBITO" ou "CREDITO"
-          if (upperText.includes('CARTAO') && upperText.includes('DEBITO')) formaPagamento = 'Cartão Débito';
-          else if (upperText.includes('CARTAO') && upperText.includes('CREDITO')) formaPagamento = 'Cartão Crédito';
-        }
+        else if (upperText.includes('CARTAO') && upperText.includes('DEBITO')) formaPagamento = 'Cartão Débito';
+        else if (upperText.includes('CARTAO') && upperText.includes('CREDITO')) formaPagamento = 'Cartão Crédito';
+        else if (upperText.includes('CARTAO')) formaPagamento = 'Cartão';
       }
 
-      // 3. Valor total: procura "VALOR TOTAL" ou "TOTAL" e extrai número
+      // 3. VALOR TOTAL: prioriza "VALOR TOTAL" ou "TOTAL" exatos
       let valor = null;
+      // Padrões específicos para "VALOR TOTAL" e "TOTAL"
       const valorPatterns = [
-        /(?:valor total|total|total a pagar|valor a pagar)\s*:?\s*R?\$?\s*([\d,.]+)/i,
-        /R?\$?\s*([\d,.]+)\s*(?:total|valor)/i
+        /(?:VALOR TOTAL|TOTAL|TOTAL A PAGAR|VALOR A PAGAR)\s*:?\s*R?\$?\s*([\d,.]+)/i,
+        /R?\$?\s*([\d,.]+)\s*(?:TOTAL|VALOR)/i
       ];
       for (const pattern of valorPatterns) {
         const match = text.match(pattern);
@@ -157,7 +155,7 @@
           }
         }
       }
-      // Se não achou, tenta o último número com duas casas decimais
+      // Se não achou, tenta pegar o último número com duas casas decimais (fallback)
       if (!valor) {
         const numbers = text.match(/\b(\d+[.,]\d{2})\b/g);
         if (numbers && numbers.length) {
@@ -233,7 +231,7 @@
           const valor = document.querySelector('.field-row:nth-child(2) .field-value')?.textContent || 'R$ 0,00';
           const pagamento = document.querySelector('.field-row:nth-child(3) .field-value')?.textContent || 'Não informado';
           alert(`✅ Dados confirmados:\nEstabelecimento: ${estabelecimento}\nValor: ${valor}\nPagamento: ${pagamento}`);
-          // Aqui você integra com o Google Apps Script para enviar
+          // Integre aqui com Google Apps Script
         });
 
       } catch (error) {
