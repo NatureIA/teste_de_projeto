@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OCR – Leitor de Nota (Valor Total Corrigido)</title>
+  <title>OCR – Leitor de Nota (Valor Total Priorizado)</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -55,7 +55,7 @@
 </head>
 <body>
 <div class="container">
-  <h2>📸 Leitor de Nota – Valor Total Corrigido</h2>
+  <h2>📸 Leitor de Nota – Valor Total (Prioriza VALOR TOTAL)</h2>
   <p>Selecione a imagem da nota.</p>
   <div class="file-input-wrapper">
     <input type="file" id="imageInput" accept="image/*" />
@@ -94,7 +94,7 @@
       }
     });
 
-    // ===== PARSER – ESTABELECIMENTO, FORMA DE PAGAMENTO, VALOR TOTAL =====
+    // ===== PARSER CORRIGIDO =====
     function extractFields(text) {
       const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       
@@ -135,71 +135,78 @@
         else if (upperText.includes('CARTAO')) formaPagamento = 'Cartão';
       }
 
-      // 3. VALOR TOTAL – PARSER AGRESSIVO
+      // 3. VALOR TOTAL – SOMENTE "VALOR TOTAL" (IGNORA "QUANTIDADE TOTAL")
       let valor = null;
 
-      // a. Procura "VALOR TOTAL" (case insensitive)
-      const totalRegex = /(?:VALOR TOTAL|VALOR TOTAL R\$|VALOR TOTAL RS|TOTAL A PAGAR|TOTAL)\s*:?\s*R?\$?R?S?\s*([\d,.]+)/i;
-      const matchTotal = text.match(totalRegex);
-      if (matchTotal) {
-        const raw = matchTotal[1].replace(/\./g, '').replace(',', '.');
+      // a. Procura especificamente "VALOR TOTAL" (case insensitive)
+      // Pega a linha que contém "VALOR TOTAL" e extrai o número após "R$", "RS" ou direto
+      const valorTotalRegex = /VALOR TOTAL\s*:?\s*R?\$?R?S?\s*([\d,.]+)/i;
+      const matchValorTotal = text.match(valorTotalRegex);
+      if (matchValorTotal) {
+        const raw = matchValorTotal[1].replace(/\./g, '').replace(',', '.');
         const num = parseFloat(raw);
         if (!isNaN(num) && num > 0) {
           valor = num;
         }
       }
 
-      // b. Se não, procura "R$" ou "RS" com número
+      // b. Se não achou, procura por "TOTAL A PAGAR" ou "TOTAL" (mas evita "QUANTIDADE")
       if (!valor) {
-        const moneyRegex = /R?\$?R?S?\s*([\d,.]+)\s*(?:TOTAL|VALOR)/i;
-        const matchMoney = text.match(moneyRegex);
-        if (matchMoney) {
-          const raw = matchMoney[1].replace(/\./g, '').replace(',', '.');
-          const num = parseFloat(raw);
-          if (!isNaN(num) && num > 0) {
-            valor = num;
+        // Procura "TOTAL" que não esteja precedido por "QUANTIDADE"
+        const lines2 = lines.map(l => l.toUpperCase());
+        for (let i = 0; i < lines2.length; i++) {
+          const line = lines2[i];
+          if (line.includes('TOTAL') && !line.includes('QUANTIDADE')) {
+            // Tenta extrair número da mesma linha
+            const numMatch = lines[i].match(/\b(\d+[.,]\d{2})\b/);
+            if (numMatch) {
+              const raw = numMatch[1].replace(/\./g, '').replace(',', '.');
+              const num = parseFloat(raw);
+              if (!isNaN(num) && num > 0) {
+                valor = num;
+                break;
+              }
+            }
+            // Se não achou na linha, tenta na próxima linha
+            if (i + 1 < lines.length) {
+              const nextNumMatch = lines[i+1].match(/\b(\d+[.,]\d{2})\b/);
+              if (nextNumMatch) {
+                const raw = nextNumMatch[1].replace(/\./g, '').replace(',', '.');
+                const num = parseFloat(raw);
+                if (!isNaN(num) && num > 0) {
+                  valor = num;
+                  break;
+                }
+              }
+            }
           }
         }
       }
 
-      // c. Se não, procura "R$" ou "RS" sem "TOTAL"
+      // c. Se ainda não, procura qualquer "R$" ou "RS" com número (último)
       if (!valor) {
-        const re = /R?\$?R?S?\s*(\d+[.,]\d{2})/g;
-        let match;
-        let lastMatch = null;
-        while ((match = re.exec(text)) !== null) {
-          lastMatch = match;
-        }
-        if (lastMatch) {
-          const raw = lastMatch[1].replace(/\./g, '').replace(',', '.');
-          const num = parseFloat(raw);
-          if (!isNaN(num) && num > 0) {
-            valor = num;
+        const moneyMatches = text.match(/R?\$?R?S?\s*(\d+[.,]\d{2})/g);
+        if (moneyMatches && moneyMatches.length) {
+          const last = moneyMatches[moneyMatches.length - 1];
+          const numMatch = last.match(/(\d+[.,]\d{2})/);
+          if (numMatch) {
+            const raw = numMatch[1].replace(/\./g, '').replace(',', '.');
+            const num = parseFloat(raw);
+            if (!isNaN(num) && num > 0) {
+              valor = num;
+            }
           }
         }
       }
 
-      // d. Se ainda não, pega o último número com duas casas decimais que seja > 10
+      // d. Último recurso: pega o último número com duas casas decimais > 10
       if (!valor) {
         const numbers = text.match(/\b(\d+[.,]\d{2})\b/g);
         if (numbers && numbers.length) {
-          // Pega o último
-          const last = numbers[numbers.length - 1];
-          const num = parseFloat(last.replace(',', '.'));
-          if (!isNaN(num) && num > 10) { // ignora valores pequenos (códigos)
-            valor = num;
-          }
-        }
-      }
-
-      // e. Último recurso: pega qualquer número inteiro com duas casas
-      if (!valor) {
-        const ints = text.match(/\b(\d{2,})\b/g);
-        if (ints && ints.length) {
-          const last = ints[ints.length - 1];
-          const num = parseInt(last, 10);
-          if (!isNaN(num) && num > 10) {
-            valor = num;
+          // Filtra números > 10 para ignorar códigos
+          const candidates = numbers.map(n => parseFloat(n.replace(',', '.'))).filter(n => n > 10);
+          if (candidates.length) {
+            valor = candidates[candidates.length - 1];
           }
         }
       }
