@@ -1,15 +1,14 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Teste OCR – Extração de Nota Fiscal</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OCR de Nota Fiscal – Teste</title>
   <style>
     * { box-sizing: border-box; }
     body {
       font-family: 'Segoe UI', sans-serif;
       background: #f0f2f5;
-      margin: 0;
       padding: 20px;
       display: flex;
       flex-direction: column;
@@ -42,7 +41,6 @@
       border-radius: 8px;
       border-left: 4px solid #6c5ce7;
       margin-top: 12px;
-      white-space: pre-wrap;
       word-break: break-word;
     }
     .label { font-weight: 600; color: #2d3436; margin-right: 8px; }
@@ -50,17 +48,16 @@
     .ocr-progress { background: #dfe6e9; height: 6px; border-radius: 3px; margin: 12px 0; overflow: hidden; }
     .ocr-progress-bar { height: 100%; width: 0%; background: #6c5ce7; transition: width 0.3s; }
     img.preview { max-width: 100%; max-height: 200px; border-radius: 8px; margin-top: 8px; border: 1px solid #ddd; }
-    .debug { background: #f1f2f6; padding: 8px; font-size: 12px; border-radius: 4px; margin-top: 8px; max-height: 100px; overflow-y: auto; }
+    .debug-box { background: #f1f2f6; padding: 8px; font-size: 12px; border-radius: 4px; margin-top: 8px; max-height: 150px; overflow-y: auto; white-space: pre-wrap; }
   </style>
 </head>
 <body>
-
 <div class="container">
   <h2>📸 OCR de Nota Fiscal / Cupom</h2>
-  <p>Selecione uma imagem de nota fiscal ou cupom. O sistema extrairá o texto e tentará identificar o valor total e o estabelecimento.</p>
+  <p>Selecione uma imagem <strong>nítida</strong> com texto legível.</p>
   <div class="file-input-wrapper">
     <input type="file" id="imageInput" accept="image/*" />
-    <button id="ocrBtn" disabled>🔍 Processar imagem</button>
+    <button id="ocrBtn" disabled>🔍 Processar</button>
   </div>
   <div class="ocr-progress"><div class="ocr-progress-bar" id="ocrProgressBar"></div></div>
   <div id="ocrResult" class="result-box" style="display:none;"></div>
@@ -78,116 +75,116 @@
 
     if (typeof Tesseract === 'undefined') {
       resultDiv.style.display = 'block';
-      resultDiv.innerHTML = '❌ Tesseract.js não carregado. Verifique sua conexão com a internet.';
+      resultDiv.innerHTML = '❌ Tesseract.js não carregado. Verifique a internet.';
       ocrBtn.disabled = true;
-    } else {
-      fileInput.addEventListener('change', function() {
-        const file = this.files[0];
-        if (file) {
-          ocrBtn.disabled = false;
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            previewDiv.innerHTML = `<img src="${e.target.result}" class="preview" />`;
-          };
-          reader.readAsDataURL(file);
-        } else {
-          ocrBtn.disabled = true;
-          previewDiv.innerHTML = '';
-        }
-      });
-
-      ocrBtn.addEventListener('click', async function() {
-        const file = fileInput.files[0];
-        if (!file) return;
-
-        this.disabled = true;
-        resultDiv.style.display = 'block';
-        resultDiv.innerHTML = '⏳ Processando OCR...';
-        progressBar.style.width = '0%';
-
-        try {
-          const imageData = await fileToBase64(file);
-
-          const result = await Tesseract.recognize(imageData, 'por', {
-            logger: (m) => {
-              if (m.status === 'recognizing text') {
-                const progress = Math.round(m.progress * 100);
-                progressBar.style.width = progress + '%';
-              }
-            }
-          });
-
-          progressBar.style.width = '100%';
-          const rawText = result.data.text;
-
-          // ===== PARSER MELHORADO =====
-          // 1. Limpeza: remove caracteres bizarros, mantém letras, números, pontos, vírgulas, cifrão
-          const cleanText = rawText.replace(/[^\w\s,.$R]/g, ' ').replace(/\s+/g, ' ').trim();
-
-          // 2. Extrair estabelecimento (primeira linha com >= 3 caracteres)
-          const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length >= 3);
-          const firstLine = lines.length > 0 ? lines[0] : 'Não identificado';
-
-          // 3. Tentar encontrar valor total
-          let valor = null;
-
-          // Padrões com "Total", "Valor", etc.
-          const patterns = [
-            /(?:total|valor|total geral|total a pagar|valor total)\s*:?\s*R?\$?\s*([\d,.]+)/i,
-            /R?\$?\s*([\d,.]+)\s*(?:total|valor)/i,
-            /R?\$?\s*([\d,.]+)\s*$/ // último valor no final da linha
-          ];
-          for (const pattern of patterns) {
-            const match = cleanText.match(pattern);
-            if (match) {
-              const raw = match[1].replace(/\./g, '').replace(',', '.');
-              const num = parseFloat(raw);
-              if (!isNaN(num) && num > 0) {
-                valor = num;
-                break;
-              }
-            }
-          }
-
-          // Se não achou, procura números com duas casas decimais (ex: 123,45)
-          if (!valor) {
-            const numbers = cleanText.match(/\b(\d+[.,]\d{2})\b/g);
-            if (numbers && numbers.length) {
-              const last = numbers[numbers.length - 1];
-              const num = parseFloat(last.replace(',', '.'));
-              if (!isNaN(num) && num > 0) valor = num;
-            }
-          }
-
-          // Se ainda não, pega o último número inteiro grande (>= 10)
-          if (!valor) {
-            const numbers = cleanText.match(/\b(\d{2,})\b/g);
-            if (numbers && numbers.length) {
-              const last = numbers[numbers.length - 1];
-              const num = parseInt(last, 10);
-              if (!isNaN(num) && num >= 10) valor = num;
-            }
-          }
-
-          // Monta resultado
-          let html = `<span class="label">📄 Texto extraído (${lines.length} linhas):</span><br>
-            <div style="max-height:150px;overflow-y:auto;background:#f1f2f6;padding:8px;border-radius:6px;font-size:12px;">${escapeHTML(rawText)}</div><br>`;
-          html += `<span class="label">🏢 Estabelecimento (primeira linha):</span> ${escapeHTML(firstLine)}<br>`;
-          html += `<span class="label">💰 Valor total encontrado:</span> <strong>${valor !== null ? 'R$ ' + valor.toFixed(2) : '❌ Não identificado'}</strong>`;
-          html += `<br><span class="label">🔍 Texto limpo (para debug):</span><div class="debug">${escapeHTML(cleanText)}</div>`;
-
-          resultDiv.innerHTML = html;
-        } catch (error) {
-          console.error('Erro no OCR:', error);
-          let errorMsg = error instanceof Error ? error.message : String(error);
-          resultDiv.innerHTML = `❌ Erro no OCR: ${errorMsg}<br><small>Verifique o console (F12) para mais detalhes.</small>`;
-        } finally {
-          this.disabled = false;
-        }
-      });
+      return;
     }
 
-    // ========== UTILITÁRIOS ==========
+    fileInput.addEventListener('change', function() {
+      const file = this.files[0];
+      if (file) {
+        ocrBtn.disabled = false;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          previewDiv.innerHTML = `<img src="${e.target.result}" class="preview" />`;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        ocrBtn.disabled = true;
+        previewDiv.innerHTML = '';
+      }
+    });
+
+    ocrBtn.addEventListener('click', async function() {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      this.disabled = true;
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '⏳ Inicializando OCR...';
+      progressBar.style.width = '0%';
+
+      try {
+        const imageData = await fileToBase64(file);
+
+        const result = await Tesseract.recognize(imageData, 'por', {
+          logger: (m) => {
+            if (m.status === 'recognizing text') {
+              const progress = Math.round(m.progress * 100);
+              progressBar.style.width = progress + '%';
+            }
+          }
+        });
+
+        progressBar.style.width = '100%';
+        const rawText = result.data.text;
+
+        // ========== PARSER MELHORADO ==========
+        // Limpeza pesada
+        const cleanText = rawText.replace(/[^\w\s,.$R]/g, ' ').replace(/\s+/g, ' ').trim();
+
+        // Linhas
+        const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length >= 3);
+        const firstLine = lines.length > 0 ? lines[0] : 'Não identificado';
+
+        // Extrair valor
+        let valor = null;
+
+        // Padrões com "Total"
+        const patterns = [
+          /(?:total|valor|total geral|total a pagar|valor total)\s*:?\s*R?\$?\s*([\d,.]+)/i,
+          /R?\$?\s*([\d,.]+)\s*(?:total|valor)/i,
+          /R?\$?\s*([\d,.]+)\s*$/
+        ];
+        for (const pattern of patterns) {
+          const match = cleanText.match(pattern);
+          if (match) {
+            const raw = match[1].replace(/\./g, '').replace(',', '.');
+            const num = parseFloat(raw);
+            if (!isNaN(num) && num > 0) {
+              valor = num;
+              break;
+            }
+          }
+        }
+
+        // Números com duas casas decimais
+        if (!valor) {
+          const numbers = cleanText.match(/\b(\d+[.,]\d{2})\b/g);
+          if (numbers && numbers.length) {
+            const last = numbers[numbers.length - 1];
+            const num = parseFloat(last.replace(',', '.'));
+            if (!isNaN(num) && num > 0) valor = num;
+          }
+        }
+
+        // Último número grande
+        if (!valor) {
+          const numbers = cleanText.match(/\b(\d{2,})\b/g);
+          if (numbers && numbers.length) {
+            const last = numbers[numbers.length - 1];
+            const num = parseInt(last, 10);
+            if (!isNaN(num) && num >= 10) valor = num;
+          }
+        }
+
+        // Monta resultado
+        let html = `<span class="label">📄 Texto extraído (${lines.length} linhas):</span><br>
+          <div style="max-height:150px;overflow-y:auto;background:#f1f2f6;padding:8px;border-radius:6px;font-size:12px;">${escapeHTML(rawText)}</div><br>`;
+        html += `<span class="label">🏢 Estabelecimento:</span> ${escapeHTML(firstLine)}<br>`;
+        html += `<span class="label">💰 Valor total:</span> <strong>${valor !== null ? 'R$ ' + valor.toFixed(2) : '❌ Não identificado'}</strong>`;
+        html += `<br><span class="label">🔍 Texto limpo:</span><div class="debug-box">${escapeHTML(cleanText)}</div>`;
+
+        resultDiv.innerHTML = html;
+      } catch (error) {
+        console.error('Erro no OCR:', error);
+        let errorMsg = error instanceof Error ? error.message : String(error);
+        resultDiv.innerHTML = `❌ Erro no OCR: ${errorMsg}<br><small>Verifique o console (F12).</small>`;
+      } finally {
+        this.disabled = false;
+      }
+    });
+
     function fileToBase64(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
