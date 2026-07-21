@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OCR – Leitor de Nota (Valor Sem Transformação)</title>
+  <title>OCR – Leitor de Nota (Valor Numérico)</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -55,7 +55,7 @@
 </head>
 <body>
 <div class="container">
-  <h2>📸 Leitor de Nota – Valor Total Exato</h2>
+  <h2>📸 Leitor de Nota – Valor Numérico</h2>
   <p>Selecione a imagem da nota.</p>
   <div class="file-input-wrapper">
     <input type="file" id="imageInput" accept="image/*" />
@@ -93,7 +93,7 @@
       }
     });
 
-    // ===== PARSER – SEM TRANSFORMAÇÃO =====
+    // ===== PARSER CORRIGIDO =====
     function extractFields(text) {
       const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       
@@ -133,9 +133,10 @@
         else if (upperText.includes('CARTAO')) formaPagamento = 'Cartão';
       }
 
-      // 3. VALOR TOTAL – EXTRAI EXATAMENTE O QUE ESTÁ NA NOTA
+      // 3. VALOR TOTAL – EXTRAI O NÚMERO (com duas casas decimais)
       let valor = null;
-      // Procura a linha que contém "VALOR TOTAL" (case insensitive)
+
+      // Procura a linha que contém "VALOR TOTAL" (case insensitive, ignorando "QUANTIDADE")
       let valorLine = null;
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].toUpperCase();
@@ -146,42 +147,65 @@
       }
 
       if (valorLine) {
-        // Pega TUDO após "VALOR TOTAL" (incluindo R$, RS, etc.)
-        const match = valorLine.match(/VALOR TOTAL\s*:?\s*(.*)/i);
-        if (match) {
-          valor = match[1].trim();
-        }
-      }
-
-      // Se não achou na mesma linha, tenta a linha seguinte
-      if (!valor) {
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].toUpperCase();
-          if (line.includes('VALOR TOTAL') && !line.includes('QUANTIDADE')) {
-            if (i + 1 < lines.length) {
-              valor = lines[i + 1].trim();
+        // Tenta extrair um número com duas casas decimais da linha
+        const numMatch = valorLine.match(/\b(\d+[.,]\d{2})\b/);
+        if (numMatch) {
+          valor = numMatch[1];
+        } else {
+          // Se não achou na linha, tenta na próxima linha
+          const idx = lines.indexOf(valorLine);
+          if (idx + 1 < lines.length) {
+            const nextNumMatch = lines[idx+1].match(/\b(\d+[.,]\d{2})\b/);
+            if (nextNumMatch) {
+              valor = nextNumMatch[1];
             }
-            break;
           }
         }
       }
 
-      // Se ainda não, tenta procurar "TOTAL" que não seja "QUANTIDADE"
+      // Se não achou, tenta procurar "TOTAL" (evitando "QUANTIDADE")
       if (!valor) {
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i].toUpperCase();
           if (line.includes('TOTAL') && !line.includes('QUANTIDADE') && !line.includes('VALOR')) {
-            // Tenta extrair o que vem depois de "TOTAL"
-            const match = lines[i].match(/TOTAL\s*:?\s*(.*)/i);
-            if (match) {
-              valor = match[1].trim();
+            const numMatch = lines[i].match(/\b(\d+[.,]\d{2})\b/);
+            if (numMatch) {
+              valor = numMatch[1];
               break;
             }
           }
         }
       }
 
-      return { estabelecimento, formaPagamento, valor };
+      // Se ainda não, procura o último número com duas casas decimais (que não seja código)
+      if (!valor) {
+        const numbers = text.match(/\b(\d+[.,]\d{2})\b/g);
+        if (numbers && numbers.length) {
+          // Filtra números > 10 para ignorar códigos pequenos
+          const candidates = numbers.filter(n => {
+            const num = parseFloat(n.replace(',', '.'));
+            return num > 10;
+          });
+          if (candidates.length) {
+            valor = candidates[candidates.length - 1];
+          }
+        }
+      }
+
+      // Agora, formata o valor com "R$" e vírgula
+      let valorExibicao = null;
+      if (valor) {
+        // Remove pontos de milhar (se houver) e troca vírgula por ponto para parse
+        let raw = valor.replace(/\./g, '').replace(',', '.');
+        const num = parseFloat(raw);
+        if (!isNaN(num) && num > 0) {
+          valorExibicao = 'R$ ' + num.toFixed(2).replace('.', ',');
+        } else {
+          valorExibicao = valor; // fallback
+        }
+      }
+
+      return { estabelecimento, formaPagamento, valor: valorExibicao };
     }
 
     // ===== OCR =====
