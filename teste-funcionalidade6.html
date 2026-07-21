@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OCR – Leitor de Nota (Valor Total Priorizado)</title>
+  <title>OCR – Leitor de Nota (Valor Total Corrigido)</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -55,7 +55,7 @@
 </head>
 <body>
 <div class="container">
-  <h2>📸 Leitor de Nota – Valor Total (Prioriza VALOR TOTAL)</h2>
+  <h2>📸 Leitor de Nota – Valor Total Corrigido</h2>
   <p>Selecione a imagem da nota.</p>
   <div class="file-input-wrapper">
     <input type="file" id="imageInput" accept="image/*" />
@@ -74,7 +74,6 @@
     const resultDiv = document.getElementById('ocrResult');
     const previewDiv = document.getElementById('imagePreview');
 
-    // ===== API OCR.SPACE =====
     const OCR_API_KEY = 'helloworld';
     const OCR_URL = 'https://api.ocr.space/parse/image';
 
@@ -98,7 +97,7 @@
     function extractFields(text) {
       const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       
-      // 1. Estabelecimento: primeira linha com mais de 10 caracteres, sem ser código
+      // 1. Estabelecimento: primeira linha com mais de 10 caracteres
       let estabelecimento = '';
       for (let i = 0; i < Math.min(lines.length, 6); i++) {
         const line = lines[i];
@@ -122,7 +121,6 @@
           break;
         }
       }
-      // Fallback
       if (!formaPagamento) {
         const upperText = text.toUpperCase();
         if (upperText.includes('DÉBITO')) formaPagamento = 'Débito';
@@ -135,43 +133,49 @@
         else if (upperText.includes('CARTAO')) formaPagamento = 'Cartão';
       }
 
-      // 3. VALOR TOTAL – SOMENTE "VALOR TOTAL" (IGNORA "QUANTIDADE TOTAL")
+      // 3. VALOR TOTAL – CORRIGIDO
       let valor = null;
 
-      // a. Procura especificamente "VALOR TOTAL" (case insensitive)
-      // Pega a linha que contém "VALOR TOTAL" e extrai o número após "R$", "RS" ou direto
+      // a. Procura "VALOR TOTAL" e extrai o número
       const valorTotalRegex = /VALOR TOTAL\s*:?\s*R?\$?R?S?\s*([\d,.]+)/i;
       const matchValorTotal = text.match(valorTotalRegex);
       if (matchValorTotal) {
-        const raw = matchValorTotal[1].replace(/\./g, '').replace(',', '.');
+        // Extrai o número mantendo a vírgula
+        let raw = matchValorTotal[1];
+        // Remove pontos de milhar (ex: 1.234,56 -> 1234,56)
+        raw = raw.replace(/\./g, '');
+        // Troca vírgula por ponto para parseFloat
+        raw = raw.replace(',', '.');
         const num = parseFloat(raw);
         if (!isNaN(num) && num > 0) {
           valor = num;
         }
       }
 
-      // b. Se não achou, procura por "TOTAL A PAGAR" ou "TOTAL" (mas evita "QUANTIDADE")
+      // b. Se não achou, procura "TOTAL" (evitando "QUANTIDADE")
       if (!valor) {
-        // Procura "TOTAL" que não esteja precedido por "QUANTIDADE"
-        const lines2 = lines.map(l => l.toUpperCase());
-        for (let i = 0; i < lines2.length; i++) {
-          const line = lines2[i];
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].toUpperCase();
           if (line.includes('TOTAL') && !line.includes('QUANTIDADE')) {
             // Tenta extrair número da mesma linha
             const numMatch = lines[i].match(/\b(\d+[.,]\d{2})\b/);
             if (numMatch) {
-              const raw = numMatch[1].replace(/\./g, '').replace(',', '.');
+              let raw = numMatch[1];
+              raw = raw.replace(/\./g, '');
+              raw = raw.replace(',', '.');
               const num = parseFloat(raw);
               if (!isNaN(num) && num > 0) {
                 valor = num;
                 break;
               }
             }
-            // Se não achou na linha, tenta na próxima linha
+            // Se não, tenta na linha seguinte
             if (i + 1 < lines.length) {
               const nextNumMatch = lines[i+1].match(/\b(\d+[.,]\d{2})\b/);
               if (nextNumMatch) {
-                const raw = nextNumMatch[1].replace(/\./g, '').replace(',', '.');
+                let raw = nextNumMatch[1];
+                raw = raw.replace(/\./g, '');
+                raw = raw.replace(',', '.');
                 const num = parseFloat(raw);
                 if (!isNaN(num) && num > 0) {
                   valor = num;
@@ -183,14 +187,16 @@
         }
       }
 
-      // c. Se ainda não, procura qualquer "R$" ou "RS" com número (último)
+      // c. Procura "R$" ou "RS" com número (último)
       if (!valor) {
         const moneyMatches = text.match(/R?\$?R?S?\s*(\d+[.,]\d{2})/g);
         if (moneyMatches && moneyMatches.length) {
           const last = moneyMatches[moneyMatches.length - 1];
           const numMatch = last.match(/(\d+[.,]\d{2})/);
           if (numMatch) {
-            const raw = numMatch[1].replace(/\./g, '').replace(',', '.');
+            let raw = numMatch[1];
+            raw = raw.replace(/\./g, '');
+            raw = raw.replace(',', '.');
             const num = parseFloat(raw);
             if (!isNaN(num) && num > 0) {
               valor = num;
@@ -203,8 +209,11 @@
       if (!valor) {
         const numbers = text.match(/\b(\d+[.,]\d{2})\b/g);
         if (numbers && numbers.length) {
-          // Filtra números > 10 para ignorar códigos
-          const candidates = numbers.map(n => parseFloat(n.replace(',', '.'))).filter(n => n > 10);
+          const candidates = numbers.map(n => {
+            let raw = n.replace(/\./g, '');
+            raw = raw.replace(',', '.');
+            return parseFloat(raw);
+          }).filter(n => n > 10);
           if (candidates.length) {
             valor = candidates[candidates.length - 1];
           }
@@ -255,12 +264,11 @@
           throw new Error('Nenhum texto reconhecido.');
         }
 
-        // ===== EXTRAIR =====
         const extracted = extractFields(extractedText);
 
         let html = `
           <div class="field-row"><span class="field-label">🏢 Estabelecimento</span><span class="field-value">${escapeHTML(extracted.estabelecimento || 'Não identificado')}</span></div>
-          <div class="field-row"><span class="field-label">💰 Valor Total</span><span class="field-value">${extracted.valor !== null ? 'R$ ' + extracted.valor.toFixed(2) : '❌ Não identificado'}</span></div>
+          <div class="field-row"><span class="field-label">💰 Valor Total</span><span class="field-value">${extracted.valor !== null ? 'R$ ' + extracted.valor.toFixed(2).replace('.', ',') : '❌ Não identificado'}</span></div>
           <div class="field-row"><span class="field-label">💳 Forma de Pagamento</span><span class="field-value">${escapeHTML(extracted.formaPagamento || 'Não identificado')}</span></div>
           <button class="btn-confirmar" id="btnConfirmar">✅ Confirmar e Enviar</button>
           <hr>
@@ -277,7 +285,6 @@
           const valor = document.querySelector('.field-row:nth-child(2) .field-value')?.textContent || 'R$ 0,00';
           const pagamento = document.querySelector('.field-row:nth-child(3) .field-value')?.textContent || 'Não informado';
           alert(`✅ Dados confirmados:\nEstabelecimento: ${estabelecimento}\nValor: ${valor}\nPagamento: ${pagamento}`);
-          // Integre aqui com Google Apps Script
         });
 
       } catch (error) {
@@ -288,7 +295,6 @@
       }
     });
 
-    // ===== UTILITÁRIOS =====
     function escapeHTML(str) {
       if (!str) return '';
       return String(str)
