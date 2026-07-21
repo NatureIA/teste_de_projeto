@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OCR – Leitor de Nota (Valor Numérico)</title>
+  <title>OCR – Leitor de Nota (Valor Formatado)</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -55,7 +55,7 @@
 </head>
 <body>
 <div class="container">
-  <h2>📸 Leitor de Nota – Valor Numérico</h2>
+  <h2>📸 Leitor de Nota – Valor Formatado (110,35)</h2>
   <p>Selecione a imagem da nota.</p>
   <div class="file-input-wrapper">
     <input type="file" id="imageInput" accept="image/*" />
@@ -133,10 +133,10 @@
         else if (upperText.includes('CARTAO')) formaPagamento = 'Cartão';
       }
 
-      // 3. VALOR TOTAL – EXTRAI O NÚMERO (com duas casas decimais)
+      // 3. VALOR TOTAL – EXTRAI E FORMATA CORRETAMENTE
       let valor = null;
 
-      // Procura a linha que contém "VALOR TOTAL" (case insensitive, ignorando "QUANTIDADE")
+      // Procura a linha que contém "VALOR TOTAL" (ignorando "QUANTIDADE")
       let valorLine = null;
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].toUpperCase();
@@ -147,65 +147,85 @@
       }
 
       if (valorLine) {
-        // Tenta extrair um número com duas casas decimais da linha
-        const numMatch = valorLine.match(/\b(\d+[.,]\d{2})\b/);
+        // Tenta extrair número com duas casas decimais (ex: 110,35 ou 110.35)
+        let numMatch = valorLine.match(/\b(\d+[.,]\d{2})\b/);
         if (numMatch) {
-          valor = numMatch[1];
+          let numStr = numMatch[1];
+          // Substitui ponto por vírgula para padronizar
+          numStr = numStr.replace('.', ',');
+          valor = 'R$ ' + numStr;
         } else {
-          // Se não achou na linha, tenta na próxima linha
-          const idx = lines.indexOf(valorLine);
-          if (idx + 1 < lines.length) {
-            const nextNumMatch = lines[idx+1].match(/\b(\d+[.,]\d{2})\b/);
-            if (nextNumMatch) {
-              valor = nextNumMatch[1];
+          // Se não achou, tenta extrair um número inteiro (ex: 11035)
+          const intMatch = valorLine.match(/\b(\d{5,})\b/);
+          if (intMatch) {
+            let num = parseInt(intMatch[1], 10);
+            if (!isNaN(num) && num > 0) {
+              // Divide por 100 para obter duas casas decimais
+              const formatted = (num / 100).toFixed(2).replace('.', ',');
+              valor = 'R$ ' + formatted;
+            }
+          } else {
+            // Se não achou na linha, tenta na linha seguinte
+            const idx = lines.indexOf(valorLine);
+            if (idx + 1 < lines.length) {
+              const nextLine = lines[idx+1];
+              let nextMatch = nextLine.match(/\b(\d+[.,]\d{2})\b/);
+              if (nextMatch) {
+                let numStr = nextMatch[1].replace('.', ',');
+                valor = 'R$ ' + numStr;
+              } else {
+                const intMatch2 = nextLine.match(/\b(\d{5,})\b/);
+                if (intMatch2) {
+                  let num = parseInt(intMatch2[1], 10);
+                  if (!isNaN(num) && num > 0) {
+                    const formatted = (num / 100).toFixed(2).replace('.', ',');
+                    valor = 'R$ ' + formatted;
+                  }
+                }
+              }
             }
           }
         }
       }
 
-      // Se não achou, tenta procurar "TOTAL" (evitando "QUANTIDADE")
+      // Se não encontrou "VALOR TOTAL", tenta "TOTAL" (sem "QUANTIDADE")
       if (!valor) {
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i].toUpperCase();
           if (line.includes('TOTAL') && !line.includes('QUANTIDADE') && !line.includes('VALOR')) {
             const numMatch = lines[i].match(/\b(\d+[.,]\d{2})\b/);
             if (numMatch) {
-              valor = numMatch[1];
+              let numStr = numMatch[1].replace('.', ',');
+              valor = 'R$ ' + numStr;
               break;
+            } else {
+              const intMatch = lines[i].match(/\b(\d{5,})\b/);
+              if (intMatch) {
+                let num = parseInt(intMatch[1], 10);
+                if (!isNaN(num) && num > 0) {
+                  const formatted = (num / 100).toFixed(2).replace('.', ',');
+                  valor = 'R$ ' + formatted;
+                  break;
+                }
+              }
             }
           }
         }
       }
 
-      // Se ainda não, procura o último número com duas casas decimais (que não seja código)
+      // Se ainda não, procura o último número com duas casas decimais > 10
       if (!valor) {
         const numbers = text.match(/\b(\d+[.,]\d{2})\b/g);
         if (numbers && numbers.length) {
-          // Filtra números > 10 para ignorar códigos pequenos
-          const candidates = numbers.filter(n => {
-            const num = parseFloat(n.replace(',', '.'));
-            return num > 10;
-          });
+          const candidates = numbers.map(n => parseFloat(n.replace(',', '.'))).filter(n => n > 10);
           if (candidates.length) {
-            valor = candidates[candidates.length - 1];
+            const last = candidates[candidates.length - 1];
+            valor = 'R$ ' + last.toFixed(2).replace('.', ',');
           }
         }
       }
 
-      // Agora, formata o valor com "R$" e vírgula
-      let valorExibicao = null;
-      if (valor) {
-        // Remove pontos de milhar (se houver) e troca vírgula por ponto para parse
-        let raw = valor.replace(/\./g, '').replace(',', '.');
-        const num = parseFloat(raw);
-        if (!isNaN(num) && num > 0) {
-          valorExibicao = 'R$ ' + num.toFixed(2).replace('.', ',');
-        } else {
-          valorExibicao = valor; // fallback
-        }
-      }
-
-      return { estabelecimento, formaPagamento, valor: valorExibicao };
+      return { estabelecimento, formaPagamento, valor };
     }
 
     // ===== OCR =====
