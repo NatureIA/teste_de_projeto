@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OCR – Estabelecimento, Valor e Forma de Pagamento</title>
+  <title>OCR – Extração Direta</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -41,32 +41,29 @@
       border-radius: 8px;
       border-left: 4px solid #6c5ce7;
       margin-top: 12px;
-      word-break: break-word;
     }
     .label { font-weight: 600; color: #2d3436; margin-right: 8px; }
     .file-input-wrapper { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
     .ocr-progress { background: #dfe6e9; height: 6px; border-radius: 3px; margin: 12px 0; overflow: hidden; }
     .ocr-progress-bar { height: 100%; width: 0%; background: #6c5ce7; transition: width 0.3s; }
     img.preview { max-width: 100%; max-height: 200px; border-radius: 8px; margin-top: 8px; border: 1px solid #ddd; }
-    .debug-box { background: #f1f2f6; padding: 8px; font-size: 12px; border-radius: 4px; margin-top: 8px; max-height: 150px; overflow-y: auto; white-space: pre-wrap; }
-    .processed-img { max-width: 100%; max-height: 150px; border: 1px solid #aaa; margin-top: 8px; }
-    .field-group { margin: 12px 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-    .field-group label { font-weight: 600; min-width: 120px; }
-    .field-group input { flex: 1; min-width: 200px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
-    .field-group .value { font-weight: bold; color: #2d3436; }
+    .field-row { display: flex; padding: 8px 0; border-bottom: 1px solid #eee; }
+    .field-label { width: 150px; font-weight: 600; color: #555; }
+    .field-value { font-weight: bold; color: #1a1a2e; }
+    .btn-confirmar { background: #27ae60; margin-top: 12px; }
+    .btn-confirmar:hover { background: #1e8449; }
   </style>
 </head>
 <body>
 <div class="container">
-  <h2>📸 Extração Inteligente – Estabelecimento, Valor e Pagamento</h2>
-  <p>Selecione a imagem da nota. O sistema vai extrair os três campos principais.</p>
+  <h2>📸 Extração Direta – Nota Fiscal</h2>
+  <p>Selecione a imagem da nota.</p>
   <div class="file-input-wrapper">
     <input type="file" id="imageInput" accept="image/*" />
     <button id="ocrBtn" disabled>🔍 Processar</button>
   </div>
   <div class="ocr-progress"><div class="ocr-progress-bar" id="ocrProgressBar"></div></div>
   <div id="imagePreview"></div>
-  <div id="processedPreview"></div>
   <div id="ocrResult" class="result-box" style="display:none;"></div>
 </div>
 
@@ -77,7 +74,6 @@
     const progressBar = document.getElementById('ocrProgressBar');
     const resultDiv = document.getElementById('ocrResult');
     const previewDiv = document.getElementById('imagePreview');
-    const processedDiv = document.getElementById('processedPreview');
 
     // ===== API OCR.SPACE =====
     const OCR_API_KEY = 'helloworld';
@@ -96,81 +92,62 @@
       } else {
         ocrBtn.disabled = true;
         previewDiv.innerHTML = '';
-        processedDiv.innerHTML = '';
       }
     });
 
-    // ===== PRÉ-PROCESSAMENTO =====
-    function preprocessImage(imageDataURL) {
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          const scale = 2;
-          const width = img.width * scale;
-          const height = img.height * scale;
-          canvas.width = width;
-          canvas.height = height;
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(img, 0, 0, width, height);
-          const imageData = ctx.getImageData(0, 0, width, height);
-          const data = imageData.data;
-          for (let i = 0; i < data.length; i += 4) {
-            const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
-            let val = (gray - 128) * 2.0 + 128;
-            val = Math.min(255, Math.max(0, val));
-            const threshold = 140;
-            const binary = val > threshold ? 255 : 0;
-            data[i] = binary;
-            data[i+1] = binary;
-            data[i+2] = binary;
-          }
-          ctx.putImageData(imageData, 0, 0);
-          const processedDataURL = canvas.toDataURL('image/png');
-          processedDiv.innerHTML = `<img src="${processedDataURL}" class="processed-img" />`;
-          resolve(processedDataURL);
-        };
-        img.src = imageDataURL;
-      });
-    }
-
-    // ===== PARSER ESPECIALIZADO =====
-    function parseFields(rawText) {
-      // Limpeza básica
-      const clean = rawText.replace(/[^\w\s,.$R:\-]/g, ' ').replace(/\s+/g, ' ').trim();
-      const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 2);
-      const fullText = lines.join(' ');
-
-      // 1. ESTABELECIMENTO – geralmente nas primeiras linhas, com palavras-chave
-      let estabelecimento = null;
-      const establishmentKeywords = ['COMERCIAL', 'MERCADO', 'SUPERMERCADO', 'KLOPPEL', 'OPPEL', 'ATACADO', 'VAREJO'];
+    // ===== PARSER ESPECÍFICO =====
+    function extractFields(text) {
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      
+      // 1. Estabelecimento: primeira linha com mais de 10 caracteres, que não seja código
+      let estabelecimento = '';
       for (let i = 0; i < Math.min(lines.length, 6); i++) {
-        const line = lines[i].toUpperCase();
-        if (establishmentKeywords.some(k => line.includes(k))) {
-          estabelecimento = lines[i];
+        const line = lines[i];
+        // Se tiver mais de 10 caracteres e não for só números ou códigos
+        if (line.length > 10 && !/^\d+$/.test(line) && !/^[A-Z0-9]+$/.test(line)) {
+          estabelecimento = line;
           break;
         }
       }
-      // Se não achou, tenta a primeira linha com mais de 10 caracteres
-      if (!estabelecimento) {
-        for (let i = 0; i < Math.min(lines.length, 4); i++) {
-          if (lines[i].length > 10) {
-            estabelecimento = lines[i];
-            break;
+
+      // 2. Forma de pagamento: procura por "FORMA DE PAGAMENTO" e pega a linha seguinte
+      let formaPagamento = '';
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].toUpperCase();
+        if (line.includes('FORMA DE PAGAMENTO') || line.includes('FORMA PAGTO')) {
+          if (i + 1 < lines.length) {
+            formaPagamento = lines[i + 1];
+            // Se a linha seguinte for vazia ou muito curta, pega a próxima
+            if (formaPagamento.length < 3 && i + 2 < lines.length) {
+              formaPagamento = lines[i + 2];
+            }
           }
+          break;
+        }
+      }
+      // Se não achou, tenta procurar por "DÉBITO", "CRÉDITO", etc.
+      if (!formaPagamento) {
+        const upperText = text.toUpperCase();
+        if (upperText.includes('DÉBITO')) formaPagamento = 'Débito';
+        else if (upperText.includes('CRÉDITO')) formaPagamento = 'Crédito';
+        else if (upperText.includes('DINHEIRO')) formaPagamento = 'Dinheiro';
+        else if (upperText.includes('PIX')) formaPagamento = 'Pix';
+        else if (upperText.includes('VOUCHER')) formaPagamento = 'Voucher';
+        else {
+          // Tenta achar "CARTAO" + "DEBITO" ou "CREDITO"
+          if (upperText.includes('CARTAO') && upperText.includes('DEBITO')) formaPagamento = 'Cartão Débito';
+          else if (upperText.includes('CARTAO') && upperText.includes('CREDITO')) formaPagamento = 'Cartão Crédito';
         }
       }
 
-      // 2. VALOR TOTAL – procura por "TOTAL", "VALOR" ou padrão de número
+      // 3. Valor total: procura "VALOR TOTAL" ou "TOTAL" e extrai número
       let valor = null;
       const valorPatterns = [
         /(?:valor total|total|total a pagar|valor a pagar)\s*:?\s*R?\$?\s*([\d,.]+)/i,
         /R?\$?\s*([\d,.]+)\s*(?:total|valor)/i
       ];
       for (const pattern of valorPatterns) {
-        const match = clean.match(pattern);
+        const match = text.match(pattern);
         if (match) {
           const raw = match[1].replace(/\./g, '').replace(',', '.');
           const num = parseFloat(raw);
@@ -180,50 +157,17 @@
           }
         }
       }
+      // Se não achou, tenta o último número com duas casas decimais
       if (!valor) {
-        const numbers = clean.match(/\b(\d+[.,]\d{2})\b/g);
+        const numbers = text.match(/\b(\d+[.,]\d{2})\b/g);
         if (numbers && numbers.length) {
           const last = numbers[numbers.length - 1];
           const num = parseFloat(last.replace(',', '.'));
           if (!isNaN(num) && num > 0) valor = num;
         }
       }
-      if (!valor) {
-        const numbers = clean.match(/\b(\d{2,})\b/g);
-        if (numbers && numbers.length) {
-          const last = numbers[numbers.length - 1];
-          const num = parseInt(last, 10);
-          if (!isNaN(num) && num >= 10) valor = num;
-        }
-      }
 
-      // 3. FORMA DE PAGAMENTO – procura palavras-chave
-      let formaPagamento = null;
-      const paymentKeywords = [
-        { word: 'DÉBITO', label: 'Débito' },
-        { word: 'CRÉDITO', label: 'Crédito' },
-        { word: 'DINHEIRO', label: 'Dinheiro' },
-        { word: 'PIX', label: 'Pix' },
-        { word: 'VOUCHER', label: 'Voucher' },
-        { word: 'CHEQUE', label: 'Cheque' },
-        { word: 'BOLETO', label: 'Boleto' },
-        { word: 'TRANSFERÊNCIA', label: 'Transferência' }
-      ];
-      const upperText = clean.toUpperCase();
-      for (const pk of paymentKeywords) {
-        if (upperText.includes(pk.word)) {
-          formaPagamento = pk.label;
-          break;
-        }
-      }
-      // Se não achou, tenta procurar "CARTAO" + "DEBITO" ou "CREDITO"
-      if (!formaPagamento) {
-        if (upperText.includes('CARTAO') && upperText.includes('DEBITO')) formaPagamento = 'Cartão Débito';
-        else if (upperText.includes('CARTAO') && upperText.includes('CREDITO')) formaPagamento = 'Cartão Crédito';
-        else if (upperText.includes('CARTAO')) formaPagamento = 'Cartão';
-      }
-
-      return { estabelecimento, valor, formaPagamento, rawText, cleanText: clean };
+      return { estabelecimento, formaPagamento, valor };
     }
 
     // ===== OCR =====
@@ -236,29 +180,25 @@
 
       this.disabled = true;
       resultDiv.style.display = 'block';
-      resultDiv.innerHTML = '⏳ Pré-processando...';
+      resultDiv.innerHTML = '⏳ Enviando para OCR...';
       progressBar.style.width = '0%';
 
       try {
-        const processedURL = await preprocessImage(window._originalImage);
-        progressBar.style.width = '30%';
-
-        resultDiv.innerHTML = '⏳ Enviando para OCR.space...';
-        const base64 = processedURL.split(',')[1];
+        const base64 = window._originalImage.split(',')[1];
         const formData = new FormData();
-        formData.append('base64Image', `data:image/png;base64,${base64}`);
+        formData.append('base64Image', `data:${file.type};base64,${base64}`);
         formData.append('apikey', OCR_API_KEY);
         formData.append('language', 'por');
         formData.append('OCREngine', '2');
         formData.append('scale', 'true');
         formData.append('isTable', 'true');
 
-        progressBar.style.width = '60%';
+        progressBar.style.width = '50%';
+
         const response = await fetch(OCR_URL, {
           method: 'POST',
           body: formData
         });
-        progressBar.style.width = '90%';
         const data = await response.json();
         progressBar.style.width = '100%';
 
@@ -268,49 +208,37 @@
         }
 
         if (!extractedText || extractedText.trim().length < 5) {
-          throw new Error('OCR não reconheceu texto suficiente.');
+          throw new Error('Nenhum texto reconhecido.');
         }
 
-        // ===== PARSE =====
-        const parsed = parseFields(extractedText);
+        // ===== EXTRAIR =====
+        const extracted = extractFields(extractedText);
 
-        // Monta HTML com campos editáveis
         let html = `
-          <div class="field-group">
-            <label>🏢 Estabelecimento</label>
-            <input type="text" id="editEstabelecimento" value="${escapeHTML(parsed.estabelecimento || '')}" placeholder="Digite o nome" />
-          </div>
-          <div class="field-group">
-            <label>💰 Valor Total</label>
-            <span class="value">${parsed.valor !== null ? 'R$ ' + parsed.valor.toFixed(2) : '❌ Não identificado'}</span>
-          </div>
-          <div class="field-group">
-            <label>💳 Forma de Pagamento</label>
-            <input type="text" id="editPagamento" value="${escapeHTML(parsed.formaPagamento || '')}" placeholder="Ex: Débito, Crédito, Dinheiro" />
-          </div>
+          <div class="field-row"><span class="field-label">🏢 Estabelecimento</span><span class="field-value">${escapeHTML(extracted.estabelecimento || 'Não identificado')}</span></div>
+          <div class="field-row"><span class="field-label">💰 Valor Total</span><span class="field-value">${extracted.valor !== null ? 'R$ ' + extracted.valor.toFixed(2) : '❌ Não identificado'}</span></div>
+          <div class="field-row"><span class="field-label">💳 Forma de Pagamento</span><span class="field-value">${escapeHTML(extracted.formaPagamento || 'Não identificado')}</span></div>
+          <button class="btn-confirmar" id="btnConfirmar">✅ Confirmar e Enviar</button>
           <hr>
-          <span class="label">📄 Texto extraído (bruto):</span>
-          <div style="max-height:120px;overflow-y:auto;background:#f1f2f6;padding:8px;border-radius:6px;font-size:12px;">${escapeHTML(extractedText)}</div>
-          <br><span class="label">🔍 Texto limpo:</span>
-          <div class="debug-box">${escapeHTML(parsed.cleanText || '')}</div>
-          <br><button id="btnConfirmar" class="btn-confirmar">✅ Confirmar e Enviar</button>
+          <details>
+            <summary>🔍 Ver texto extraído (bruto)</summary>
+            <div style="max-height:120px;overflow-y:auto;background:#f1f2f6;padding:8px;border-radius:6px;font-size:12px;white-space:pre-wrap;">${escapeHTML(extractedText)}</div>
+          </details>
         `;
 
         resultDiv.innerHTML = html;
 
-        // Botão confirmar – aqui você pode integrar com o envio para o Google Forms/Sheets
         document.getElementById('btnConfirmar').addEventListener('click', function() {
-          const estabelecimentoFinal = document.getElementById('editEstabelecimento').value.trim() || 'Não informado';
-          const pagamentoFinal = document.getElementById('editPagamento').value.trim() || 'Não informado';
-          const valorFinal = parsed.valor !== null ? parsed.valor : 0;
-
-          alert(`Dados confirmados:\nEstabelecimento: ${estabelecimentoFinal}\nValor: R$ ${valorFinal.toFixed(2)}\nPagamento: ${pagamentoFinal}`);
-          // Aqui você pode enviar para o Google Apps Script ou fazer o que quiser
+          const estabelecimento = document.querySelector('.field-row:nth-child(1) .field-value')?.textContent || 'Não informado';
+          const valor = document.querySelector('.field-row:nth-child(2) .field-value')?.textContent || 'R$ 0,00';
+          const pagamento = document.querySelector('.field-row:nth-child(3) .field-value')?.textContent || 'Não informado';
+          alert(`✅ Dados confirmados:\nEstabelecimento: ${estabelecimento}\nValor: ${valor}\nPagamento: ${pagamento}`);
+          // Aqui você integra com o Google Apps Script para enviar
         });
 
       } catch (error) {
         console.error('Erro:', error);
-        resultDiv.innerHTML = `❌ Erro: ${error.message || 'Falha no processamento.'}<br><small>Tente uma imagem mais nítida.</small>`;
+        resultDiv.innerHTML = `❌ Erro: ${error.message || 'Falha no processamento.'}`;
       } finally {
         this.disabled = false;
       }
