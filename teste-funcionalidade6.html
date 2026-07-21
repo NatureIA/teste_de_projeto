@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OCR com Pré-processamento – Funciona</title>
+  <title>OCR – Estabelecimento, Valor e Forma de Pagamento</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -50,20 +50,24 @@
     img.preview { max-width: 100%; max-height: 200px; border-radius: 8px; margin-top: 8px; border: 1px solid #ddd; }
     .debug-box { background: #f1f2f6; padding: 8px; font-size: 12px; border-radius: 4px; margin-top: 8px; max-height: 150px; overflow-y: auto; white-space: pre-wrap; }
     .processed-img { max-width: 100%; max-height: 150px; border: 1px solid #aaa; margin-top: 8px; }
+    .field-group { margin: 12px 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .field-group label { font-weight: 600; min-width: 120px; }
+    .field-group input { flex: 1; min-width: 200px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+    .field-group .value { font-weight: bold; color: #2d3436; }
   </style>
 </head>
 <body>
 <div class="container">
-  <h2>📸 OCR com Pré-processamento + Fallback Manual</h2>
-  <p>Selecione a imagem da nota. O sistema vai melhorar a imagem e tentar extrair o valor.</p>
+  <h2>📸 Extração Inteligente – Estabelecimento, Valor e Pagamento</h2>
+  <p>Selecione a imagem da nota. O sistema vai extrair os três campos principais.</p>
   <div class="file-input-wrapper">
     <input type="file" id="imageInput" accept="image/*" />
     <button id="ocrBtn" disabled>🔍 Processar</button>
   </div>
   <div class="ocr-progress"><div class="ocr-progress-bar" id="ocrProgressBar"></div></div>
-  <div id="ocrResult" class="result-box" style="display:none;"></div>
   <div id="imagePreview"></div>
   <div id="processedPreview"></div>
+  <div id="ocrResult" class="result-box" style="display:none;"></div>
 </div>
 
 <script>
@@ -96,43 +100,33 @@
       }
     });
 
-    // ===== PRÉ-PROCESSAMENTO PESADO =====
+    // ===== PRÉ-PROCESSAMENTO =====
     function preprocessImage(imageDataURL) {
       return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
-          // Aumenta resolução para melhorar OCR
           const scale = 2;
           const width = img.width * scale;
           const height = img.height * scale;
           canvas.width = width;
           canvas.height = height;
-
-          // Desenha redimensionado
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, width, height);
-
-          // Pega pixels
           const imageData = ctx.getImageData(0, 0, width, height);
           const data = imageData.data;
-
-          // Aplica contraste e binarização adaptativa (simples)
           for (let i = 0; i < data.length; i += 4) {
             const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
-            // Aumenta contraste fortemente
             let val = (gray - 128) * 2.0 + 128;
             val = Math.min(255, Math.max(0, val));
-            // Binarização com threshold adaptativo baseado na média local (simplificado)
             const threshold = 140;
             const binary = val > threshold ? 255 : 0;
             data[i] = binary;
             data[i+1] = binary;
             data[i+2] = binary;
           }
-
           ctx.putImageData(imageData, 0, 0);
           const processedDataURL = canvas.toDataURL('image/png');
           processedDiv.innerHTML = `<img src="${processedDataURL}" class="processed-img" />`;
@@ -142,29 +136,94 @@
       });
     }
 
-    // ===== EXTRAÇÃO MANUAL DE VALOR (FALLBACK) =====
-    function extractValueManually(text) {
-      // Procura padrões como "110,35" ou "110.35" que aparecem na nota
-      const patterns = [
-        /\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/g, // 110,35
-        /\b(\d{1,3}(?:,\d{3})*\.\d{2})\b/g, // 110.35
-        /\b(\d{2,}\.\d{2})\b/g,
-        /\b(\d{2,},\d{2})\b/g
-      ];
-      let found = null;
-      for (const pattern of patterns) {
-        const matches = text.match(pattern);
-        if (matches) {
-          // Pega o último número (geralmente o total)
-          const last = matches[matches.length - 1];
-          const num = parseFloat(last.replace(/\./g, '').replace(',', '.'));
-          if (!isNaN(num) && num > 0) {
-            found = num;
+    // ===== PARSER ESPECIALIZADO =====
+    function parseFields(rawText) {
+      // Limpeza básica
+      const clean = rawText.replace(/[^\w\s,.$R:\-]/g, ' ').replace(/\s+/g, ' ').trim();
+      const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 2);
+      const fullText = lines.join(' ');
+
+      // 1. ESTABELECIMENTO – geralmente nas primeiras linhas, com palavras-chave
+      let estabelecimento = null;
+      const establishmentKeywords = ['COMERCIAL', 'MERCADO', 'SUPERMERCADO', 'KLOPPEL', 'OPPEL', 'ATACADO', 'VAREJO'];
+      for (let i = 0; i < Math.min(lines.length, 6); i++) {
+        const line = lines[i].toUpperCase();
+        if (establishmentKeywords.some(k => line.includes(k))) {
+          estabelecimento = lines[i];
+          break;
+        }
+      }
+      // Se não achou, tenta a primeira linha com mais de 10 caracteres
+      if (!estabelecimento) {
+        for (let i = 0; i < Math.min(lines.length, 4); i++) {
+          if (lines[i].length > 10) {
+            estabelecimento = lines[i];
             break;
           }
         }
       }
-      return found;
+
+      // 2. VALOR TOTAL – procura por "TOTAL", "VALOR" ou padrão de número
+      let valor = null;
+      const valorPatterns = [
+        /(?:valor total|total|total a pagar|valor a pagar)\s*:?\s*R?\$?\s*([\d,.]+)/i,
+        /R?\$?\s*([\d,.]+)\s*(?:total|valor)/i
+      ];
+      for (const pattern of valorPatterns) {
+        const match = clean.match(pattern);
+        if (match) {
+          const raw = match[1].replace(/\./g, '').replace(',', '.');
+          const num = parseFloat(raw);
+          if (!isNaN(num) && num > 0) {
+            valor = num;
+            break;
+          }
+        }
+      }
+      if (!valor) {
+        const numbers = clean.match(/\b(\d+[.,]\d{2})\b/g);
+        if (numbers && numbers.length) {
+          const last = numbers[numbers.length - 1];
+          const num = parseFloat(last.replace(',', '.'));
+          if (!isNaN(num) && num > 0) valor = num;
+        }
+      }
+      if (!valor) {
+        const numbers = clean.match(/\b(\d{2,})\b/g);
+        if (numbers && numbers.length) {
+          const last = numbers[numbers.length - 1];
+          const num = parseInt(last, 10);
+          if (!isNaN(num) && num >= 10) valor = num;
+        }
+      }
+
+      // 3. FORMA DE PAGAMENTO – procura palavras-chave
+      let formaPagamento = null;
+      const paymentKeywords = [
+        { word: 'DÉBITO', label: 'Débito' },
+        { word: 'CRÉDITO', label: 'Crédito' },
+        { word: 'DINHEIRO', label: 'Dinheiro' },
+        { word: 'PIX', label: 'Pix' },
+        { word: 'VOUCHER', label: 'Voucher' },
+        { word: 'CHEQUE', label: 'Cheque' },
+        { word: 'BOLETO', label: 'Boleto' },
+        { word: 'TRANSFERÊNCIA', label: 'Transferência' }
+      ];
+      const upperText = clean.toUpperCase();
+      for (const pk of paymentKeywords) {
+        if (upperText.includes(pk.word)) {
+          formaPagamento = pk.label;
+          break;
+        }
+      }
+      // Se não achou, tenta procurar "CARTAO" + "DEBITO" ou "CREDITO"
+      if (!formaPagamento) {
+        if (upperText.includes('CARTAO') && upperText.includes('DEBITO')) formaPagamento = 'Cartão Débito';
+        else if (upperText.includes('CARTAO') && upperText.includes('CREDITO')) formaPagamento = 'Cartão Crédito';
+        else if (upperText.includes('CARTAO')) formaPagamento = 'Cartão';
+      }
+
+      return { estabelecimento, valor, formaPagamento, rawText, cleanText: clean };
     }
 
     // ===== OCR =====
@@ -177,35 +236,29 @@
 
       this.disabled = true;
       resultDiv.style.display = 'block';
-      resultDiv.innerHTML = '⏳ Pré-processando imagem...';
+      resultDiv.innerHTML = '⏳ Pré-processando...';
       progressBar.style.width = '0%';
 
       try {
-        // 1. Pré-processa
         const processedURL = await preprocessImage(window._originalImage);
         progressBar.style.width = '30%';
 
-        // 2. Envia para OCR.space com parâmetros otimizados
         resultDiv.innerHTML = '⏳ Enviando para OCR.space...';
-
         const base64 = processedURL.split(',')[1];
         const formData = new FormData();
         formData.append('base64Image', `data:image/png;base64,${base64}`);
         formData.append('apikey', OCR_API_KEY);
         formData.append('language', 'por');
-        formData.append('OCREngine', '2'); // Engine mais precisa
+        formData.append('OCREngine', '2');
         formData.append('scale', 'true');
         formData.append('isTable', 'true');
 
         progressBar.style.width = '60%';
-
         const response = await fetch(OCR_URL, {
           method: 'POST',
           body: formData
         });
-
         progressBar.style.width = '90%';
-
         const data = await response.json();
         progressBar.style.width = '100%';
 
@@ -214,89 +267,50 @@
           extractedText = data.ParsedResults[0].ParsedText || '';
         }
 
-        // Se OCR.space falhou, tenta extrair da imagem processada via canvas (fallback)
-        if (!extractedText || extractedText.trim().length < 10) {
-          // Tenta extrair manualmente do texto que veio (que pode ser lixo)
-          // Mas também podemos tentar Tesseract.js aqui (opcional)
-          throw new Error('OCR.space não reconheceu texto suficiente.');
+        if (!extractedText || extractedText.trim().length < 5) {
+          throw new Error('OCR não reconheceu texto suficiente.');
         }
 
-        // ===== PARSER =====
-        const rawText = extractedText;
-        const cleanText = rawText.replace(/[^\w\s,.$R]/g, ' ').replace(/\s+/g, ' ').trim();
+        // ===== PARSE =====
+        const parsed = parseFields(extractedText);
 
-        const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length >= 3);
-        const firstLine = lines.length > 0 ? lines[0] : 'Não identificado';
-
-        let valor = null;
-
-        // 1. Procura "VALOR TOTAL" ou "TOTAL"
-        const totalPatterns = [
-          /(?:valor total|total|valor a pagar)\s*:?\s*R?\$?\s*([\d,.]+)/i,
-          /R?\$?\s*([\d,.]+)\s*(?:total|valor)/i
-        ];
-        for (const pattern of totalPatterns) {
-          const match = cleanText.match(pattern);
-          if (match) {
-            const raw = match[1].replace(/\./g, '').replace(',', '.');
-            const num = parseFloat(raw);
-            if (!isNaN(num) && num > 0) {
-              valor = num;
-              break;
-            }
-          }
-        }
-
-        // 2. Se não, procura números com duas casas decimais
-        if (!valor) {
-          const numbers = cleanText.match(/\b(\d+[.,]\d{2})\b/g);
-          if (numbers && numbers.length) {
-            // Pega o último (geralmente o total)
-            const last = numbers[numbers.length - 1];
-            const num = parseFloat(last.replace(',', '.'));
-            if (!isNaN(num) && num > 0) valor = num;
-          }
-        }
-
-        // 3. Fallback manual (busca qualquer número grande)
-        if (!valor) {
-          valor = extractValueManually(cleanText);
-        }
-
-        // Se ainda não tem valor, usa o que aparecer no texto
-        if (!valor) {
-          const numbers = cleanText.match(/\b(\d{2,})\b/g);
-          if (numbers && numbers.length) {
-            const last = numbers[numbers.length - 1];
-            const num = parseInt(last, 10);
-            if (!isNaN(num) && num >= 10) valor = num;
-          }
-        }
-
-        let html = `<span class="label">📄 Texto extraído (${lines.length} linhas):</span><br>
-          <div style="max-height:150px;overflow-y:auto;background:#f1f2f6;padding:8px;border-radius:6px;font-size:12px;">${escapeHTML(rawText)}</div><br>`;
-        html += `<span class="label">🏢 Estabelecimento:</span> ${escapeHTML(firstLine)}<br>`;
-        html += `<span class="label">💰 Valor total:</span> <strong>${valor !== null ? 'R$ ' + valor.toFixed(2) : '❌ Não identificado'}</strong>`;
-        html += `<br><span class="label">🔍 Texto limpo:</span><div class="debug-box">${escapeHTML(cleanText)}</div>`;
+        // Monta HTML com campos editáveis
+        let html = `
+          <div class="field-group">
+            <label>🏢 Estabelecimento</label>
+            <input type="text" id="editEstabelecimento" value="${escapeHTML(parsed.estabelecimento || '')}" placeholder="Digite o nome" />
+          </div>
+          <div class="field-group">
+            <label>💰 Valor Total</label>
+            <span class="value">${parsed.valor !== null ? 'R$ ' + parsed.valor.toFixed(2) : '❌ Não identificado'}</span>
+          </div>
+          <div class="field-group">
+            <label>💳 Forma de Pagamento</label>
+            <input type="text" id="editPagamento" value="${escapeHTML(parsed.formaPagamento || '')}" placeholder="Ex: Débito, Crédito, Dinheiro" />
+          </div>
+          <hr>
+          <span class="label">📄 Texto extraído (bruto):</span>
+          <div style="max-height:120px;overflow-y:auto;background:#f1f2f6;padding:8px;border-radius:6px;font-size:12px;">${escapeHTML(extractedText)}</div>
+          <br><span class="label">🔍 Texto limpo:</span>
+          <div class="debug-box">${escapeHTML(parsed.cleanText || '')}</div>
+          <br><button id="btnConfirmar" class="btn-confirmar">✅ Confirmar e Enviar</button>
+        `;
 
         resultDiv.innerHTML = html;
+
+        // Botão confirmar – aqui você pode integrar com o envio para o Google Forms/Sheets
+        document.getElementById('btnConfirmar').addEventListener('click', function() {
+          const estabelecimentoFinal = document.getElementById('editEstabelecimento').value.trim() || 'Não informado';
+          const pagamentoFinal = document.getElementById('editPagamento').value.trim() || 'Não informado';
+          const valorFinal = parsed.valor !== null ? parsed.valor : 0;
+
+          alert(`Dados confirmados:\nEstabelecimento: ${estabelecimentoFinal}\nValor: R$ ${valorFinal.toFixed(2)}\nPagamento: ${pagamentoFinal}`);
+          // Aqui você pode enviar para o Google Apps Script ou fazer o que quiser
+        });
+
       } catch (error) {
         console.error('Erro:', error);
-        // Fallback: tenta extrair valor manualmente da imagem original (usando canvas para ler pixels? impossível)
-        // Mas podemos tentar extrair números da string de erro ou do texto que veio
-        let manualValue = null;
-        if (error.message && error.message.includes('OCR.space')) {
-          // Tenta extrair da mensagem de erro (caso tenha algum número)
-          const match = error.message.match(/(\d+[.,]\d{2})/);
-          if (match) {
-            manualValue = parseFloat(match[1].replace(',', '.'));
-          }
-        }
-        if (manualValue) {
-          resultDiv.innerHTML = `⚠️ OCR falhou, mas conseguimos extrair manualmente: <strong>R$ ${manualValue.toFixed(2)}</strong>`;
-        } else {
-          resultDiv.innerHTML = `❌ Erro: ${error.message || 'Falha no processamento.'}<br><small>Tente uma imagem mais nítida ou ajuste o contraste manualmente.</small>`;
-        }
+        resultDiv.innerHTML = `❌ Erro: ${error.message || 'Falha no processamento.'}<br><small>Tente uma imagem mais nítida.</small>`;
       } finally {
         this.disabled = false;
       }
@@ -304,6 +318,7 @@
 
     // ===== UTILITÁRIOS =====
     function escapeHTML(str) {
+      if (!str) return '';
       return String(str)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
