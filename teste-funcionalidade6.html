@@ -1,98 +1,210 @@
-Texto extraído (94 linhas):
-qn / Fr CAS Y Wes
-, AO
-f) É
-PA, LAS
-à ' ” J à
-"  & f
-: ' “ ;
-à à . sf
-í " ao
-? ee! do P
-, ' STD: f
-H "a t po MUITA
-MTT TATO
-, f Fé 1H) E Fo
-| TE 3) UMiI 1015
-i -. ATral Etul (ja VD '" pos
-+ a VLULA EL MM) mm ni OO 4 fas
-; f 1:t À Li14989 VTUyAV
-. ' + J - ” - O bi Ta
-- . " j : 4 É A dl
-À | 183? "e e Pio
-“ A P 9 &“ A AF ” o
-" "— " -»s. " A á à Fr 1:83 | 4? ” 11)
-d d s 7 F : , ! ,
-' À F ui! s 19 5 SE
-| h +11! TT. IV 23 SW
-: : > i A í IH: 41 ã . Pr = “,
-& - Á L TE ' o E O
-” 21 117 PS SA - ,
-=“ á - » ” ã - à ,” “O é: / s
-: .” - k > ” ds
-. " " ; % | é jiHiL J, 7 1 f
-Ut JS : : J , e ioipantaee -” r ss ke f
-é ' ' . à õ ' tibi E Ao h a
-Tb A es 1) »” E ” » 2”. > - ã =
-- : , A If + à b ss p IT 7 70 - 113
-dá - ú ã us . k H ] ' + DT
-4 " - : * À ". » A «e ”
-” ' t pr te vo
-, - ã 4 k a 46h
-Pã r E ; * EE .
-> " TATA pe 1 BEM >» e
-a. if IN e " nAGA Dé
-- 1 < Ai :.
-FA + r 1. - ) [2 (4) ,
-1: » EO r “áhkHÍthA Ee o
-=- a 8 r ED
-: & ! f a nneiiitTAa
-3 EDS = a - F É MMA 1
-fa Do q. SECA Sae Ç N , r ad “O kk
-. mes Ps PÉ ” á EE Fr | 9 ;
-E ; 1070 & Í hn UI3L 331P ADE 2078 |
-* E - A 3) A. - = 7 Fa - [A
-Pa] E, [pá == a) t ps... ” 7 3 =
-— Fã. j i - s : e E
-1 DA DA Fo, ln AAA =
-— O É dA a. z
-Ao o RT me E
-. , Fá / & DD = & á -
-fd AA -= Es d se = poema & j À ;
-.. "E SS =s i SINASAS - - —= / fe RN e É Z é
-— ii IA = Po Fr. ER Z e. maASSCEArcOoA 193E
-= PAS 2 ; E Tratar” - TE aca À 505568 335
-LN FO 5 z di" 15, * E r [) = = e À
-"” ar. A à É) = e) E ADA DO
-a, da : Do Pat Aatalça = dn ga ola al, AT o
-. TE 3 À d. dá - Ofii C * 1 vô -M E
-— f ss ã j
-fFIFEALTÍZA LS, sLItODILLIVV 3 SA LE LTD
-ss í AF FEZ 1
-a
--” à : : . e. e :
-MZ ”r ) T. 1 Ao: Ee > "E
-"a Ç ( -
-| 144 | j n? Pb
-SS À JL) , Í 4
-fr 1
-1h
-She À
-há, RIA
-' i ' |
-LEA JNNS/IAIALIA,.
-É aa. 2. ô
-'
-Ns r fa , sá | Ih É > ||
-' ó 14 / 1 i? NÚ
-"? À LH!
-21 NS 1V1D
-i t ” *
-j )j À ré : Po
-1 Pp Tt in FiISE
-os | à PA
-" ” v, FUV D1 À
-nt 1/ Nes 2
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teste OCR – Extração de Nota Fiscal</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container {
+      max-width: 800px;
+      width: 100%;
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    h2 { margin-top: 0; color: #1a1a2e; }
+    button {
+      background: #6c5ce7;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover { background: #5a4bd1; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .result-box {
+      background: #f8f9fa;
+      padding: 16px;
+      border-radius: 8px;
+      border-left: 4px solid #6c5ce7;
+      margin-top: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .label { font-weight: 600; color: #2d3436; margin-right: 8px; }
+    .file-input-wrapper { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .ocr-progress { background: #dfe6e9; height: 6px; border-radius: 3px; margin: 12px 0; overflow: hidden; }
+    .ocr-progress-bar { height: 100%; width: 0%; background: #6c5ce7; transition: width 0.3s; }
+    img.preview { max-width: 100%; max-height: 200px; border-radius: 8px; margin-top: 8px; border: 1px solid #ddd; }
+    .debug { background: #f1f2f6; padding: 8px; font-size: 12px; border-radius: 4px; margin-top: 8px; max-height: 100px; overflow-y: auto; }
+  </style>
+</head>
+<body>
 
-🏢 Estabelecimento (primeira linha): qn / Fr CAS Y Wes
-💰 Valor total encontrado: ❌ Não identificado
+<div class="container">
+  <h2>📸 OCR de Nota Fiscal / Cupom</h2>
+  <p>Selecione uma imagem de nota fiscal ou cupom. O sistema extrairá o texto e tentará identificar o valor total e o estabelecimento.</p>
+  <div class="file-input-wrapper">
+    <input type="file" id="imageInput" accept="image/*" />
+    <button id="ocrBtn" disabled>🔍 Processar imagem</button>
+  </div>
+  <div class="ocr-progress"><div class="ocr-progress-bar" id="ocrProgressBar"></div></div>
+  <div id="ocrResult" class="result-box" style="display:none;"></div>
+  <div id="imagePreview"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script>
+  (function() {
+    const fileInput = document.getElementById('imageInput');
+    const ocrBtn = document.getElementById('ocrBtn');
+    const progressBar = document.getElementById('ocrProgressBar');
+    const resultDiv = document.getElementById('ocrResult');
+    const previewDiv = document.getElementById('imagePreview');
+
+    if (typeof Tesseract === 'undefined') {
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '❌ Tesseract.js não carregado. Verifique sua conexão com a internet.';
+      ocrBtn.disabled = true;
+    } else {
+      fileInput.addEventListener('change', function() {
+        const file = this.files[0];
+        if (file) {
+          ocrBtn.disabled = false;
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            previewDiv.innerHTML = `<img src="${e.target.result}" class="preview" />`;
+          };
+          reader.readAsDataURL(file);
+        } else {
+          ocrBtn.disabled = true;
+          previewDiv.innerHTML = '';
+        }
+      });
+
+      ocrBtn.addEventListener('click', async function() {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        this.disabled = true;
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '⏳ Processando OCR...';
+        progressBar.style.width = '0%';
+
+        try {
+          const imageData = await fileToBase64(file);
+
+          const result = await Tesseract.recognize(imageData, 'por', {
+            logger: (m) => {
+              if (m.status === 'recognizing text') {
+                const progress = Math.round(m.progress * 100);
+                progressBar.style.width = progress + '%';
+              }
+            }
+          });
+
+          progressBar.style.width = '100%';
+          const rawText = result.data.text;
+
+          // ===== PARSER MELHORADO =====
+          // 1. Limpeza: remove caracteres bizarros, mantém letras, números, pontos, vírgulas, cifrão
+          const cleanText = rawText.replace(/[^\w\s,.$R]/g, ' ').replace(/\s+/g, ' ').trim();
+
+          // 2. Extrair estabelecimento (primeira linha com >= 3 caracteres)
+          const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length >= 3);
+          const firstLine = lines.length > 0 ? lines[0] : 'Não identificado';
+
+          // 3. Tentar encontrar valor total
+          let valor = null;
+
+          // Padrões com "Total", "Valor", etc.
+          const patterns = [
+            /(?:total|valor|total geral|total a pagar|valor total)\s*:?\s*R?\$?\s*([\d,.]+)/i,
+            /R?\$?\s*([\d,.]+)\s*(?:total|valor)/i,
+            /R?\$?\s*([\d,.]+)\s*$/ // último valor no final da linha
+          ];
+          for (const pattern of patterns) {
+            const match = cleanText.match(pattern);
+            if (match) {
+              const raw = match[1].replace(/\./g, '').replace(',', '.');
+              const num = parseFloat(raw);
+              if (!isNaN(num) && num > 0) {
+                valor = num;
+                break;
+              }
+            }
+          }
+
+          // Se não achou, procura números com duas casas decimais (ex: 123,45)
+          if (!valor) {
+            const numbers = cleanText.match(/\b(\d+[.,]\d{2})\b/g);
+            if (numbers && numbers.length) {
+              const last = numbers[numbers.length - 1];
+              const num = parseFloat(last.replace(',', '.'));
+              if (!isNaN(num) && num > 0) valor = num;
+            }
+          }
+
+          // Se ainda não, pega o último número inteiro grande (>= 10)
+          if (!valor) {
+            const numbers = cleanText.match(/\b(\d{2,})\b/g);
+            if (numbers && numbers.length) {
+              const last = numbers[numbers.length - 1];
+              const num = parseInt(last, 10);
+              if (!isNaN(num) && num >= 10) valor = num;
+            }
+          }
+
+          // Monta resultado
+          let html = `<span class="label">📄 Texto extraído (${lines.length} linhas):</span><br>
+            <div style="max-height:150px;overflow-y:auto;background:#f1f2f6;padding:8px;border-radius:6px;font-size:12px;">${escapeHTML(rawText)}</div><br>`;
+          html += `<span class="label">🏢 Estabelecimento (primeira linha):</span> ${escapeHTML(firstLine)}<br>`;
+          html += `<span class="label">💰 Valor total encontrado:</span> <strong>${valor !== null ? 'R$ ' + valor.toFixed(2) : '❌ Não identificado'}</strong>`;
+          html += `<br><span class="label">🔍 Texto limpo (para debug):</span><div class="debug">${escapeHTML(cleanText)}</div>`;
+
+          resultDiv.innerHTML = html;
+        } catch (error) {
+          console.error('Erro no OCR:', error);
+          let errorMsg = error instanceof Error ? error.message : String(error);
+          resultDiv.innerHTML = `❌ Erro no OCR: ${errorMsg}<br><small>Verifique o console (F12) para mais detalhes.</small>`;
+        } finally {
+          this.disabled = false;
+        }
+      });
+    }
+
+    // ========== UTILITÁRIOS ==========
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (e) => reject(new Error('Falha ao ler o arquivo.'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function escapeHTML(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  })();
+</script>
+</body>
+</html>
