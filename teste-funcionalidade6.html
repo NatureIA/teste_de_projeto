@@ -24,20 +24,9 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.1);
       margin-bottom: 20px;
     }
-    h2 {
-      margin-top: 0;
-      color: #1a1a2e;
-    }
-    .row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 16px;
-      margin: 16px 0;
-    }
-    .col {
-      flex: 1;
-      min-width: 200px;
-    }
+    h2 { margin-top: 0; color: #1a1a2e; }
+    .row { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
+    .col { flex: 1; min-width: 200px; }
     button {
       background: #6c5ce7;
       color: white;
@@ -58,45 +47,14 @@
       white-space: pre-wrap;
       word-break: break-word;
     }
-    .label {
-      font-weight: 600;
-      color: #2d3436;
-      margin-right: 8px;
-    }
-    .file-input-wrapper {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-    .ocr-progress {
-      background: #dfe6e9;
-      height: 6px;
-      border-radius: 3px;
-      margin: 12px 0;
-      overflow: hidden;
-    }
-    .ocr-progress-bar {
-      height: 100%;
-      width: 0%;
-      background: #6c5ce7;
-      transition: width 0.3s;
-    }
-    img.preview {
-      max-width: 100%;
-      max-height: 200px;
-      border-radius: 8px;
-      margin-top: 8px;
-      border: 1px solid #ddd;
-    }
-    .badge {
-      display: inline-block;
-      background: #dfe6e9;
-      border-radius: 12px;
-      padding: 2px 10px;
-      font-size: 12px;
-      margin: 2px;
-    }
+    .label { font-weight: 600; color: #2d3436; margin-right: 8px; }
+    .file-input-wrapper { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .ocr-progress { background: #dfe6e9; height: 6px; border-radius: 3px; margin: 12px 0; overflow: hidden; }
+    .ocr-progress-bar { height: 100%; width: 0%; background: #6c5ce7; transition: width 0.3s; }
+    img.preview { max-width: 100%; max-height: 200px; border-radius: 8px; margin-top: 8px; border: 1px solid #ddd; }
+    .badge { display: inline-block; background: #dfe6e9; border-radius: 12px; padding: 2px 10px; font-size: 12px; margin: 2px; }
+    .error { color: #e74c3c; }
+    .success { color: #27ae60; }
   </style>
 </head>
 <body>
@@ -120,193 +78,197 @@
   <div id="imagePreview"></div>
 </div>
 
+<!-- Carregamento do Tesseract.js com fallback -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
-  // ========== GEOLOCALIZAÇÃO ==========
-  document.getElementById('geolocateBtn').addEventListener('click', function() {
-    const btn = this;
-    btn.disabled = true;
-    btn.textContent = 'Buscando localização...';
-    const resultDiv = document.getElementById('geoResult');
-    resultDiv.style.display = 'block';
-    resultDiv.innerHTML = '⏳ Obtendo coordenadas...';
+  (function() {
+    // ========== GEOLOCALIZAÇÃO ==========
+    document.getElementById('geolocateBtn').addEventListener('click', function() {
+      const btn = this;
+      btn.disabled = true;
+      btn.textContent = 'Buscando localização...';
+      const resultDiv = document.getElementById('geoResult');
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '⏳ Obtendo coordenadas...';
 
-    if (!navigator.geolocation) {
-      resultDiv.innerHTML = '❌ Seu navegador não suporta geolocalização.';
-      btn.disabled = false;
-      btn.textContent = '🌐 Obter localização e categorizar';
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        resultDiv.innerHTML = `📍 Coordenadas: ${latitude}, ${longitude}<br>⏳ Consultando Nominatim...`;
-
-        try {
-          // Usa Nominatim (OpenStreetMap) para obter o tipo de lugar
-          const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&accept-language=pt`;
-          const response = await fetch(url);
-          const data = await response.json();
-
-          let categoria = 'Outros';
-          let placeName = 'Desconhecido';
-
-          if (data && data.address) {
-            const addr = data.address;
-            // Tenta extrair o nome do lugar
-            placeName = addr.shop || addr.tourism || addr.amenity || addr.leisure || addr.office || addr.place || addr.road || 'Local próximo';
-
-            // Mapeia tipos do OpenStreetMap para categorias financeiras
-            const type = data.type || '';
-            const category = data.category || '';
-            const full = [type, category].join(' ').toLowerCase();
-
-            if (full.includes('supermarket') || full.includes('grocery') || full.includes('market')) categoria = 'Alimentação';
-            else if (full.includes('restaurant') || full.includes('cafe') || full.includes('fast_food') || full.includes('bar')) categoria = 'Lazer/Restaurante';
-            else if (full.includes('fuel') || full.includes('gas_station') || full.includes('parking')) categoria = 'Transporte';
-            else if (full.includes('pharmacy') || full.includes('hospital') || full.includes('clinic') || full.includes('doctor')) categoria = 'Saúde';
-            else if (full.includes('shop') || full.includes('mall') || full.includes('department_store')) categoria = 'Compras';
-            else if (full.includes('bank') || full.includes('atm') || full.includes('financial')) categoria = 'Serviços Financeiros';
-            else if (full.includes('education') || full.includes('school') || full.includes('university')) categoria = 'Educação';
-            else if (full.includes('entertainment') || full.includes('cinema') || full.includes('theater')) categoria = 'Lazer';
-            // Adicione mais mapeamentos conforme necessário
-          }
-
-          resultDiv.innerHTML = `
-            <span class="label">📍 Local:</span> ${placeName}<br>
-            <span class="label">📌 Categoria sugerida:</span> <strong>${categoria}</strong><br>
-            <span class="label">🌐 Coordenadas:</span> ${latitude}, ${longitude}
-          `;
-        } catch (error) {
-          resultDiv.innerHTML = `❌ Erro ao consultar Nominatim: ${error.message}`;
-        }
-
+      if (!navigator.geolocation) {
+        resultDiv.innerHTML = '❌ Seu navegador não suporta geolocalização.';
         btn.disabled = false;
         btn.textContent = '🌐 Obter localização e categorizar';
-      },
-      (error) => {
-        resultDiv.innerHTML = `❌ Erro ao obter localização: ${error.message}`;
-        btn.disabled = false;
-        btn.textContent = '🌐 Obter localização e categorizar';
+        return;
       }
-    );
-  });
 
-  // ========== OCR ==========
-  const fileInput = document.getElementById('imageInput');
-  const ocrBtn = document.getElementById('ocrBtn');
-  const progressBar = document.getElementById('ocrProgressBar');
-  const resultDiv = document.getElementById('ocrResult');
-  const previewDiv = document.getElementById('imagePreview');
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          resultDiv.innerHTML = `📍 Coordenadas: ${latitude}, ${longitude}<br>⏳ Consultando Nominatim...`;
 
-  fileInput.addEventListener('change', function() {
-    const file = this.files[0];
-    if (file) {
-      ocrBtn.disabled = false;
-      // Mostrar pré-visualização
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        previewDiv.innerHTML = `<img src="${e.target.result}" class="preview" />`;
-      };
-      reader.readAsDataURL(file);
-    } else {
-      ocrBtn.disabled = true;
-      previewDiv.innerHTML = '';
-    }
-  });
+          try {
+            const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&accept-language=pt`;
+            const response = await fetch(url);
+            const data = await response.json();
 
-  ocrBtn.addEventListener('click', async function() {
-    const file = fileInput.files[0];
-    if (!file) return;
+            let categoria = 'Outros';
+            let placeName = 'Desconhecido';
 
-    this.disabled = true;
-    resultDiv.style.display = 'block';
-    resultDiv.innerHTML = '⏳ Processando OCR...';
-    progressBar.style.width = '0%';
+            if (data && data.address) {
+              const addr = data.address;
+              placeName = addr.shop || addr.tourism || addr.amenity || addr.leisure || addr.office || addr.place || addr.road || 'Local próximo';
 
-    try {
-      const imageData = await fileToBase64(file);
+              const type = data.type || '';
+              const category = data.category || '';
+              const full = [type, category].join(' ').toLowerCase();
 
-      // Usar Tesseract.js para OCR
-      const result = await Tesseract.recognize(imageData, 'por', {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            const progress = Math.round(m.progress * 100);
-            progressBar.style.width = progress + '%';
+              if (full.includes('supermarket') || full.includes('grocery') || full.includes('market')) categoria = 'Alimentação';
+              else if (full.includes('restaurant') || full.includes('cafe') || full.includes('fast_food') || full.includes('bar')) categoria = 'Lazer/Restaurante';
+              else if (full.includes('fuel') || full.includes('gas_station') || full.includes('parking')) categoria = 'Transporte';
+              else if (full.includes('pharmacy') || full.includes('hospital') || full.includes('clinic') || full.includes('doctor')) categoria = 'Saúde';
+              else if (full.includes('shop') || full.includes('mall') || full.includes('department_store')) categoria = 'Compras';
+              else if (full.includes('bank') || full.includes('atm') || full.includes('financial')) categoria = 'Serviços Financeiros';
+              else if (full.includes('education') || full.includes('school') || full.includes('university')) categoria = 'Educação';
+              else if (full.includes('entertainment') || full.includes('cinema') || full.includes('theater')) categoria = 'Lazer';
+            }
+
+            resultDiv.innerHTML = `
+              <span class="label">📍 Local:</span> ${placeName}<br>
+              <span class="label">📌 Categoria sugerida:</span> <strong>${categoria}</strong><br>
+              <span class="label">🌐 Coordenadas:</span> ${latitude}, ${longitude}
+            `;
+          } catch (error) {
+            resultDiv.innerHTML = `❌ Erro ao consultar Nominatim: ${error.message}`;
           }
+
+          btn.disabled = false;
+          btn.textContent = '🌐 Obter localização e categorizar';
+        },
+        (error) => {
+          resultDiv.innerHTML = `❌ Erro ao obter localização: ${error.message}`;
+          btn.disabled = false;
+          btn.textContent = '🌐 Obter localização e categorizar';
+        }
+      );
+    });
+
+    // ========== OCR ==========
+    const fileInput = document.getElementById('imageInput');
+    const ocrBtn = document.getElementById('ocrBtn');
+    const progressBar = document.getElementById('ocrProgressBar');
+    const resultDiv = document.getElementById('ocrResult');
+    const previewDiv = document.getElementById('imagePreview');
+
+    // Verifica se o Tesseract foi carregado
+    if (typeof Tesseract === 'undefined') {
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '❌ A biblioteca Tesseract.js não foi carregada. Verifique sua conexão com a internet.';
+      ocrBtn.disabled = true;
+    } else {
+      fileInput.addEventListener('change', function() {
+        const file = this.files[0];
+        if (file) {
+          ocrBtn.disabled = false;
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            previewDiv.innerHTML = `<img src="${e.target.result}" class="preview" />`;
+          };
+          reader.readAsDataURL(file);
+        } else {
+          ocrBtn.disabled = true;
+          previewDiv.innerHTML = '';
         }
       });
 
-      progressBar.style.width = '100%';
-      const text = result.data.text;
+      ocrBtn.addEventListener('click', async function() {
+        const file = fileInput.files[0];
+        if (!file) return;
 
-      // Parser para extrair valor total e estabelecimento
-      const lines = text.split('\n').filter(line => line.trim().length > 0);
-      const firstLine = lines.length > 0 ? lines[0].trim() : 'Não identificado';
+        // Desabilita botão e reseta
+        this.disabled = true;
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '⏳ Inicializando OCR...';
+        progressBar.style.width = '0%';
 
-      // Tentar encontrar valor total (padrões comuns)
-      let valor = null;
-      const patterns = [
-        /(?:total|valor|total geral|total a pagar)\s*:?\s*r?\$?\s*([\d,.]+)/i,
-        /r?\$?\s*([\d,.]+)\s*(?:total|valor)/i,
-        /(?:total|valor)\s*[^\d]*([\d,.]+)/i,
-        /^([\d,.]+)$/ // linha única com valor
-      ];
-      for (const pattern of patterns) {
-        const match = text.match(pattern);
-        if (match) {
-          const raw = match[1].replace(/\./g, '').replace(',', '.');
-          const num = parseFloat(raw);
-          if (!isNaN(num) && num > 0) {
-            valor = num;
-            break;
+        try {
+          // Converte a imagem para base64
+          const imageData = await fileToBase64(file);
+
+          // Executa o OCR
+          const result = await Tesseract.recognize(imageData, 'por', {
+            logger: (m) => {
+              if (m.status === 'recognizing text') {
+                const progress = Math.round(m.progress * 100);
+                progressBar.style.width = progress + '%';
+              }
+            }
+          });
+
+          progressBar.style.width = '100%';
+          const text = result.data.text;
+
+          // Parser
+          const lines = text.split('\n').filter(line => line.trim().length > 0);
+          const firstLine = lines.length > 0 ? lines[0].trim() : 'Não identificado';
+
+          let valor = null;
+          const patterns = [
+            /(?:total|valor|total geral|total a pagar)\s*:?\s*r?\$?\s*([\d,.]+)/i,
+            /r?\$?\s*([\d,.]+)\s*(?:total|valor)/i,
+            /(?:total|valor)\s*[^\d]*([\d,.]+)/i,
+            /^([\d,.]+)$/
+          ];
+          for (const pattern of patterns) {
+            const match = text.match(pattern);
+            if (match) {
+              const raw = match[1].replace(/\./g, '').replace(',', '.');
+              const num = parseFloat(raw);
+              if (!isNaN(num) && num > 0) {
+                valor = num;
+                break;
+              }
+            }
           }
+
+          if (!valor) {
+            const allNumbers = text.match(/(\d+[.,]\d{2})/g);
+            if (allNumbers) {
+              const last = allNumbers[allNumbers.length - 1];
+              const num = parseFloat(last.replace(',', '.'));
+              if (!isNaN(num) && num > 0) valor = num;
+            }
+          }
+
+          let html = `<span class="label">📄 Texto extraído (${lines.length} linhas):</span><br><div style="max-height:150px;overflow-y:auto;background:#f1f2f6;padding:8px;border-radius:6px;font-size:12px;">${escapeHTML(text)}</div><br>`;
+          html += `<span class="label">🏢 Estabelecimento (primeira linha):</span> ${escapeHTML(firstLine)}<br>`;
+          html += `<span class="label">💰 Valor total encontrado:</span> <strong>${valor !== null ? 'R$ ' + valor.toFixed(2) : '❌ Não identificado'}</strong>`;
+
+          resultDiv.innerHTML = html;
+        } catch (error) {
+          console.error('Erro no OCR:', error);
+          let errorMsg = error instanceof Error ? error.message : String(error);
+          resultDiv.innerHTML = `❌ Erro no OCR: ${errorMsg}<br><small>Verifique o console (F12) para mais detalhes.</small>`;
+        } finally {
+          this.disabled = false;
         }
-      }
-
-      // Se não encontrou, tenta achar qualquer número com duas casas decimais
-      if (!valor) {
-        const allNumbers = text.match(/(\d+[.,]\d{2})/g);
-        if (allNumbers) {
-          // Pega o último número (geralmente o total)
-          const last = allNumbers[allNumbers.length - 1];
-          const num = parseFloat(last.replace(',', '.'));
-          if (!isNaN(num) && num > 0) valor = num;
-        }
-      }
-
-      // Monta resultado
-      let html = `<span class="label">📄 Texto extraído (${lines.length} linhas):</span><br><div style="max-height:150px;overflow-y:auto;background:#f1f2f6;padding:8px;border-radius:6px;font-size:12px;">${escapeHTML(text)}</div><br>`;
-      html += `<span class="label">🏢 Estabelecimento (primeira linha):</span> ${escapeHTML(firstLine)}<br>`;
-      html += `<span class="label">💰 Valor total encontrado:</span> <strong>${valor !== null ? 'R$ ' + valor.toFixed(2) : '❌ Não identificado'}</strong>`;
-
-      resultDiv.innerHTML = html;
-    } catch (error) {
-      resultDiv.innerHTML = `❌ Erro no OCR: ${error.message}`;
-    } finally {
-      this.disabled = false;
+      });
     }
-  });
 
-  // ========== UTILITÁRIOS ==========
-  function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
+    // ========== UTILITÁRIOS ==========
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (e) => reject(new Error('Falha ao ler o arquivo.'));
+        reader.readAsDataURL(file);
+      });
+    }
 
-  function escapeHTML(str) {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
+    function escapeHTML(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  })();
 </script>
-
 </body>
 </html>
